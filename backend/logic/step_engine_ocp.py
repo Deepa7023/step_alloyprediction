@@ -8,22 +8,31 @@ import re
 import os
 from typing import Dict, Any, Optional
 
-# Attempt OCP (Open Cascade for Python) imports
-try:
-    from OCP.STEPControl import STEPControl_Reader
-    from OCP.IFSelect import IFSelect_RetDone
-    from OCP.Bnd import Bnd_Box
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-    from OCP.BRepCheck import BRepCheck_Analyzer
-    from OCP.TopExp import TopExp_Explorer
-    from OCP.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
-    from OCP.BRepBndLib import BRepBndLib
-    OCP_AVAILABLE = True
-except Exception as e:
-    OCP_AVAILABLE = False
-    # This will show up in Render logs to tell us EXACTLY what lib is missing
-    logging.getLogger(__name__).error(f"OCP IMPORT FAILED: {e}. Precision engine disabled.")
+# Global state for OCP availability and initialization
+OCP_AVAILABLE = None 
+
+def initialize_ocp():
+    """Lazy-loader for OCP to save memory at startup."""
+    global OCP_AVAILABLE
+    if OCP_AVAILABLE is not None:
+        return OCP_AVAILABLE
+    
+    try:
+        from OCP.STEPControl import STEPControl_Reader
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+        from OCP.BRepCheck import BRepCheck_Analyzer
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.TopAbs import TopAbs_SOLID, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
+        from OCP.BRepBndLib import BRepBndLib
+        OCP_AVAILABLE = True
+        return True
+    except Exception as e:
+        OCP_AVAILABLE = False
+        logging.getLogger(__name__).error(f"OCP LAZY-LOAD FAILED: {e}. Priority analysis disabled.")
+        return False
 
 logger = logging.getLogger(__name__)
 
@@ -70,14 +79,24 @@ def detect_metal_from_step(file_path: str) -> Optional[str]:
 
 
 class PreciseSTEPAnalyzer:
-    """Robust OCP-based STEP analyzer for HPDC Precision"""
+    """Robust OCP-based STEP analyzer with Lazy-Loading to save memory."""
     
     def __init__(self):
-        self.available = OCP_AVAILABLE
+        # We don't initialize on __init__ anymore
+        pass
 
     def analyze(self, file_path: str) -> Dict[str, Any]:
-        if not self.available:
-            return {"status": "skipped", "reason": "OCP_NOT_INSTALLED"}
+        if not initialize_ocp():
+             return {"status": "skipped", "reason": "OCP_LOAD_FAILURE_OR_NOT_INSTALLED"}
+
+        # Local imports for lazy-loading
+        from OCP.STEPControl import STEPControl_Reader
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRepGProp import BRepGProp
+        from OCP.GProp import GProp_GProps
+        from OCP.BRepCheck import BRepCheck_Analyzer
+        from OCP.BRepBndLib import BRepBndLib
 
         try:
             reader = STEPControl_Reader()
@@ -149,6 +168,10 @@ class PreciseSTEPAnalyzer:
             return {"status": "error", "reason": f"OCP_FAIL: {str(e)}"}
 
     def _get_topology_counts(self, shape) -> Dict[str, int]:
+        # Local imports for lazy-loading
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.TopAbs import TopAbs_SOLID, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
+
         counts = {"solids": 0, "shells": 0, "faces": 0, "edges": 0, "vertices": 0}
         exp = TopExp_Explorer()
         
@@ -161,7 +184,7 @@ class PreciseSTEPAnalyzer:
         while exp.More():
             counts["faces"] += 1
             exp.Next()
-
+ 
         exp.Init(shape, TopAbs_EDGE)
         while exp.More():
             counts["edges"] += 1

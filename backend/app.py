@@ -145,6 +145,15 @@ def analyze():
             "engine": result.get("engine", "UNKNOWN")
         })
 
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "timestamp": time.time(),
+        "instance_id": socket.gethostname()
+    })
+
 @app.route('/api/estimate', methods=['POST'])
 def estimate():
     data = request.json

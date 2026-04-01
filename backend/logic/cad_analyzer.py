@@ -11,17 +11,34 @@ import logging
 from .step_engine_ocp import PreciseSTEPAnalyzer
 
 logger = logging.getLogger(__name__)
-try:
-    import gmsh
-    GMSH_AVAILABLE = True
-except ImportError:
-    GMSH_AVAILABLE = False
+# Global state for Gmsh availability and initialization
+GMSH_AVAILABLE = None
+
+def initialize_gmsh():
+    """Lazy-loader for Gmsh to save memory at startup."""
+    global GMSH_AVAILABLE
+    if GMSH_AVAILABLE is not None:
+        return GMSH_AVAILABLE
+    
+    try:
+        import gmsh
+        GMSH_AVAILABLE = True
+        return True
+    except ImportError:
+        GMSH_AVAILABLE = False
+        logger.error("GMSH library not found. Gmsh fallback disabled.")
+        return False
+    except Exception as e:
+        GMSH_AVAILABLE = False
+        logger.error(f"GMSH initialization error: {e}. Gmsh fallback disabled.")
+        return False
 
 def mesh_via_gmsh(file_path):
     """Fallback mesher for STEP/IGES when OCP fails or is skipped."""
-    if not GMSH_AVAILABLE:
+    if not initialize_gmsh():
         return None
     
+    import gmsh # Local import for lazy-loading
     try:
         gmsh.initialize()
         gmsh.model.add("MeshEngine")

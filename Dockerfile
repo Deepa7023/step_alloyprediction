@@ -40,5 +40,5 @@ ENV PYTHONPATH=/app
 # Expose port
 EXPOSE 5000
 
-# Start command with 1 worker to stay within 512MB RAM
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "2", "backend.app:app"]
+# Start command with preload and increased timeout for heavy CAD geometry engines
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "300", "--preload", "backend.app:app"]
