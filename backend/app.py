@@ -1,3 +1,4 @@
+# HPDC Cost Engine - Production Release v1.3.3 (Optimized for Render Free Tier)
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
