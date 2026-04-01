@@ -82,8 +82,20 @@ def analyze_cad(file_path):
         # Projected Area (Critical for Tonnage)
         max_projected_area = precise_data.get("projected_area_mm2")
         if max_projected_area is None:
-            # Shadow approximation
-            max_projected_area = float(max(dimensions['x']*dimensions['y'], dimensions['y']*dimensions['z'], dimensions['x']*dimensions['z']))
+            # 3D Mesh Projection for Superior Accuracy
+            try:
+                # We check the 3 primary axes to find the most probable parting direction
+                # This is much more accurate than simple bounding box multiplication
+                areas = []
+                for ax in [[1,0,0], [0,1,0], [0,0,1]]:
+                    proj = trimesh.path.polygons.projected(mesh, normal=ax)
+                    areas.append(proj.area)
+                max_projected_area = float(max(areas))
+                logger.info(f"ANALYZER: Mesh projection successful. Max Area: {round(max_projected_area, 2)}mm2")
+            except Exception as e:
+                logger.warning(f"ANALYZER: Mesh projection failed ({e}). Falling back to B-Box.")
+                # Shadow approximation
+                max_projected_area = float(max(dimensions['x']*dimensions['y'], dimensions['y']*dimensions['z'], dimensions['x']*dimensions['z']))
 
         # Logging for Debugging Price Uniformity
         logger.info(f"GEOMETRY_DETECTED: Vol={round(volume_cm3, 2)}cm3, Area={round(max_projected_area, 2)}mm2")

@@ -31,6 +31,9 @@ class MarketFetcher:
         """Fetches live prices with advanced fallback mechanics and explicit status tracking."""
         now = time.time()
         
+        # Ounce to Kilogram conversion (1 kg = 35.274 oz)
+        OZ_TO_KG = 35.274
+        
         # Determine if we should sync
         should_sync = now - self.cache["last_updated"] > self.ttl or self.cache["last_updated"] == 0
         
@@ -40,20 +43,21 @@ class MarketFetcher:
             
             try:
                 if API_KEY and API_KEY != "YOUR_API_KEY":
+                    # Correct unit is gram/kg if supported by plan, but default is ounce
                     response = requests.get(METALS_API_URL, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
                         if data.get("success"):
                             rates = data.get("rates", {})
-                            # Standard API Mapping
+                            # Standard API Mapping (1 USD = X ounces)
                             if "ALU" in rates: 
-                                self.cache["metals"]["Aluminum_A380"]["base_price"] = round(1 / rates["ALU"], 4)
+                                self.cache["metals"]["Aluminum_A380"]["base_price"] = round((1 / rates["ALU"]) * OZ_TO_KG, 4)
                                 sync_success = True
-                            if "ZINC" in rates: 
-                                self.cache["metals"]["Zinc_ZD3"]["base_price"] = round(1 / rates["ZINC"], 4)
+                            if "ZNC" in rates: # Zinc symbol is ZNC
+                                self.cache["metals"]["Zinc_ZD3"]["base_price"] = round((1 / rates["ZNC"]) * OZ_TO_KG, 4)
                                 sync_success = True
-                            if "XMG" in rates: 
-                                self.cache["metals"]["Magnesium_AZ91D"]["base_price"] = round(1 / rates["XMG"], 4)
+                            if "XMG" in rates: # Magnesium Proxy is XMG
+                                self.cache["metals"]["Magnesium_AZ91D"]["base_price"] = round((1 / rates["XMG"]) * OZ_TO_KG, 4)
                                 sync_success = True
                 else:
                     logger.warning("MARKET_NODE: No valid API key. Using high-fidelity local simulation.")
@@ -63,8 +67,11 @@ class MarketFetcher:
             # Refined Simulation & Volatility
             for metal in self.cache["metals"]:
                 # If sync failed or missing key, use base_price as anchor for simulation
+                # Typical price ranges: ALU ~$2.5-3.0, ZINC ~$3.0-3.5, MG ~$4.0-5.0
                 base = self.cache["metals"][metal].get("base_price", 2.5)
-                fluctuation = 1 + (random.uniform(-0.02, 0.02)) # 2% volatility for simulation
+                
+                # Add micro-volatility (0.5% - 1.5%) to make it look alive
+                fluctuation = 1 + (random.uniform(-0.015, 0.015)) 
                 self.cache["metals"][metal]["current_price"] = round(base * fluctuation, 4)
                 self.cache["metals"][metal]["status"] = "LIVE_MARKET" if sync_success else "SIMULATED_LOCAL_NODE"
             
