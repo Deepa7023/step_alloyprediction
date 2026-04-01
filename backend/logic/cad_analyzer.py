@@ -7,7 +7,7 @@ import uuid
 import time
 import logging
 
-from .step_engine_ocp import PreciseSTEPAnalyzer
+from .step_engine_ocp import PreciseSTEPAnalyzer, detect_metal_from_step
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,15 @@ def analyze_cad(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     mesh = None
     precise_data = {}
+    detected_metal = None
 
     try:
+        # ── Step 0: Metal Detection (Metadata) ──────────────────────────
+        if ext in ['.step', '.stp']:
+            detected_metal = detect_metal_from_step(file_path)
+            if detected_metal:
+                logger.info(f"METAL_DETECT: Auto-detected {detected_metal}")
+
         # ── Step 1: Precise Analysis (STEP/IGES only) ────────────────────
         if ext in ['.step', '.stp', '.iges', '.igs']:
             analyzer = PreciseSTEPAnalyzer()
@@ -143,6 +150,7 @@ def analyze_cad(file_path):
             "analysis_id": analysis_id,
             "traits": traits,
             "engine": engine_name,
+            "detected_metal": detected_metal,
             "metadata": {"location": "PENDING_SYNC", "timestamp": time.time()}
         }
 

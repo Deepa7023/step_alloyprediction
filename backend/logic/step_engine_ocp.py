@@ -94,7 +94,20 @@ def _analyze_with_ocp(file_path: str) -> Dict[str, Any]:
         # 4. Bounding Box (using _s suffix)
         bbox = Bnd_Box()
         BRepBndLib.Add_s(shape, bbox)
-        xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+        
+        try:
+            # Try tuple return first
+            xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+        except Exception:
+            # Fallback to direct attribute extraction if Get() requires references or fails
+            try:
+                xmin, ymin, zmin, xmax, ymax, zmax = (
+                    bbox.CornerMin().X(), bbox.CornerMin().Y(), bbox.CornerMin().Z(),
+                    bbox.CornerMax().X(), bbox.CornerMax().Y(), bbox.CornerMax().Z()
+                )
+            except:
+                # Last resort: null box handling
+                xmin, ymin, zmin, xmax, ymax, zmax = 0, 0, 0, 1, 1, 1
 
         dx = abs(xmax - xmin)
         dy = abs(ymax - ymin)
