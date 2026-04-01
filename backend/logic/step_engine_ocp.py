@@ -85,6 +85,13 @@ class PreciseSTEPAnalyzer:
         # We don't initialize on __init__ anymore
         pass
 
+    def _get_ocp_method(self, obj, method_name):
+        """Helper to find OCP method across version-specific naming (e.g. VolumeProperties vs VolumeProperties_)"""
+        for name in [method_name, f"{method_name}_"]:
+            if hasattr(obj, name):
+                return getattr(obj, name)
+        raise AttributeError(f"OCP Object {type(obj)} has no attribute {method_name} or {method_name}_")
+
     def analyze(self, file_path: str) -> Dict[str, Any]:
         if not initialize_ocp():
              return {"status": "skipped", "reason": "OCP_LOAD_FAILURE_OR_NOT_INSTALLED"}
@@ -117,10 +124,11 @@ class PreciseSTEPAnalyzer:
 
             # 1. Precise Geometrics
             vol_props = GProp_GProps()
-            BRepGProp.VolumeProperties(shape, vol_props, False, False, False)
+            # Try both naming conventions: VolumeProperties and VolumeProperties_
+            self._get_ocp_method(BRepGProp, "VolumeProperties")(shape, vol_props, False, False, False)
             
             surf_props = GProp_GProps()
-            BRepGProp.SurfaceProperties(shape, surf_props, False, False)
+            self._get_ocp_method(BRepGProp, "SurfaceProperties")(shape, surf_props, False, False)
 
             bbox = Bnd_Box()
             bbox.SetGap(0.0)
@@ -129,15 +137,25 @@ class PreciseSTEPAnalyzer:
             # Robust Corner Retrieval
             try:
                 xmin, ymin, zmin, xmax, ymax, zmax = 0, 0, 0, 0, 0, 0
-                res = bbox.Get()
-                if isinstance(res, tuple) and len(res) == 6:
+                
+                # Check for either bbox.Get() or bbox.get() or bbox.CornerMin/Max
+                if hasattr(bbox, "Get"):
+                    res = bbox.Get()
+                elif hasattr(bbox, "get"):
+                    res = bbox.get()
+                else:
+                    res = None
+
+                if res and isinstance(res, tuple) and len(res) == 6:
                     xmin, ymin, zmin, xmax, ymax, zmax = res
                 else:
-                    p_min = bbox.CornerMin()
-                    p_max = bbox.CornerMax()
-                    xmin, ymin, zmin = p_min.X(), p_min.Y(), p_min.Z()
-                    xmax, ymax, zmax = p_max.X(), p_max.Y(), p_max.Z()
-            except:
+                    # Fallback to CornerMin/Max with version detection
+                    c_min = self._get_ocp_method(bbox, "CornerMin")()
+                    c_max = self._get_ocp_method(bbox, "CornerMax")()
+                    xmin, ymin, zmin = c_min.X(), c_min.Y(), c_min.Z()
+                    xmax, ymax, zmax = c_max.X(), c_max.Y(), c_max.Z()
+            except Exception as e:
+                print(f"BBox Retrieval Debug: {str(e)}")
                 xmin, ymin, zmin, xmax, ymax, zmax = 0, 0, 0, 0.01, 0.01, 0.01
 
             dx = abs(xmax - xmin)
