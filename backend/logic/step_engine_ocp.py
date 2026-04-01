@@ -79,37 +79,47 @@ class PreciseSTEPAnalyzer:
 
     def _get_ocp_method(self, parent, method_name):
         """
-        NUCLEAR DISCOVERY: Deep search across OCP modules using dir() reflection.
-        Handles cases where methods are renamed or moved in different OCP builds.
+        NUCLEAR DISCOVERY v2: Searches for attributes with Prefix support (e.g. BRepGProp_VolumeProperties).
         """
-        candidates = [method_name, f"{method_name}_", method_name.lower()]
+        # Get base name for prefixing
+        prefix = ""
+        if hasattr(parent, "__name__"):
+            prefix = parent.__name__.split('.')[-1]
+            
+        candidates = [
+            method_name, 
+            f"{method_name}_", 
+            f"{prefix}_{method_name}", # E.g. BRepGProp_VolumeProperties
+            f"{prefix}_{method_name}_",
+            method_name.lower(),
+            f"{prefix}_{method_name.lower()}"
+        ]
         
-        # 1. Standard Search (Highest Performance)
+        # 1. Standard Search
         for cand in candidates:
             if hasattr(parent, cand):
                 return getattr(parent, cand)
                 
-        # 2. Namespace Search (parent.parent.method pattern)
-        if hasattr(parent, "__name__"):
-            base_name = parent.__name__.split('.')[-1]
-            if hasattr(parent, base_name):
-                internal = getattr(parent, base_name)
-                for cand in candidates:
-                    if hasattr(internal, cand):
-                        return getattr(internal, cand)
+        # 2. Namespace Scan (Internal same-name class)
+        if prefix and hasattr(parent, prefix):
+            internal = getattr(parent, prefix)
+            for cand in candidates:
+                if hasattr(internal, cand):
+                    return getattr(internal, cand)
 
-        # 3. Reflection Search (Nuclear Fallback)
-        # Scan ALL attributes in the parent and return the first one that matches the pattern
+        # 3. Aggressivedir() Scan
         try:
-            attrs = dir(parent)
-            for attr in attrs:
-                # Case-insensitive substring match (e.g. 'volumeproperties' matches 'BRepGProp.VolumeProperties')
+            available = dir(parent)
+            # Find any attribute that CONTAINS the method name
+            for attr in available:
                 if method_name.lower() in attr.lower():
-                    logger.info(f"OCP_DISCOVERY: Found approximate match for '{method_name}' -> '{attr}' in {parent}")
+                    logger.info(f"OCP_DISCOVERY: Pattern Match for '{method_name}' -> '{attr}' in {parent}")
                     return getattr(parent, attr)
         except:
             pass
 
+        # 4. Ultimate Failure: Log dir() for remote debugging
+        logger.error(f"OCP Attribute Error: {method_name} NOT FOUND in {parent}. Available: {dir(parent)[:50]}...")
         raise AttributeError(f"OCP Attribute Error: {method_name} NOT FOUND in {parent}")
 
     def analyze(self, file_path: str) -> Dict[str, Any]:

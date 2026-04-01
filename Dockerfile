@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     libxinerama1 \
     libxi6 \
     libxtst6 \
+    libglu1-mesa \
+    libxmu6 \
     gmsh \
     libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*

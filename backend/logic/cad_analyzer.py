@@ -102,6 +102,8 @@ def analyze_cad(file_path):
         # 4. Critical Failure Handling
         if mesh is None and precise_data.get("status") != "success":
              ocp_reason = precise_data.get("reason", "Unknown")
+             # LOGGING_ENHANCEMENT: Dump more context for remote debugging
+             logger.error(f"FATAL_GEOMETRY_FAILURE: OCP failed ({ocp_reason}) and Mesh/GMSH failed. Check Docker build logs for GMSH install status.")
              err_msg = f"GEOMETRY_PARSE_FAILURE: File {ext} could not be read by OCP ({ocp_reason}), Trimesh, or GMSH. Please ensure it is a valid 3D file."
              raise ValueError(err_msg)
 
