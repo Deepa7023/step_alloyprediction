@@ -1,6 +1,6 @@
 flask==3.0.2
 flask-cors==4.0.0
-trimesh==4.1.1
+trimesh==4.1.2
 numpy==1.26.4
 gunicorn==21.2.0
 cadquery-ocp==7.9.3.1
