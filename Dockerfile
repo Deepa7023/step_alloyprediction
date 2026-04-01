@@ -24,6 +24,7 @@ COPY . .
 # Set environment variables
 ENV PORT=5000
 ENV FLASK_APP=backend.app:app
+ENV PYTHONPATH=/app/backend
 
 # Expose port
 EXPOSE 5000

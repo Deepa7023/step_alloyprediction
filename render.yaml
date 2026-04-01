@@ -14,5 +14,7 @@ services:
         sync: false # Set this in Render dashboard
       - key: FLASK_ENV
         value: production
+      - key: PYTHONPATH
+        value: /app/backend
     healthCheckPath: /api/health
     plan: free 
