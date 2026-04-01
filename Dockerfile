@@ -14,9 +14,13 @@ RUN apt-get update && apt-get install -y \
     libxcursor1 \
     libxft2 \
     libxkbcommon0 \
+    libxkbcommon-x11-0 \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
+    libxinerama1 \
+    libxi6 \
+    libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
