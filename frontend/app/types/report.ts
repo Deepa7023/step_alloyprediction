@@ -76,8 +76,11 @@ export interface AgentReport {
     is_live_metal_price?: boolean;
     exchange_rate: number;
     price_source?: string;
+    price_status?: string;
+    price_as_of?: string;
     pricing_note?: string;
     provider_error?: string;
+    location?: string;
     location_geodata?: {
       city?: string;
       country?: string;

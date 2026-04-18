@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Send, X, Minimize2, Maximize2 } from 'lucide-react';
@@ -10,10 +10,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 interface Msg { role: 'user' | 'bot'; text: string; ts: number; }
 
 const SUGGESTIONS = [
-  'What is A380 alloy used for?',
+  'What did I upload?',
+  'Explain my cost in simple words.',
+  'Why was this alloy and machine selected?',
+  'What should I change to reduce cost?',
+];
+
+const GENERAL_SUGGESTIONS = [
+  'What CAD data can you read after upload?',
+  'Which alloys work well for HPDC?',
   'How is HPDC die amortization calculated?',
   'Why does location affect metal cost?',
-  'What is the current LME aluminum price?',
 ];
 
 function BotAvatar({ speaking }: { speaking: boolean }) {
@@ -218,8 +225,10 @@ function PikaAvatar({ speaking }: { speaking: boolean }) {
 export default function AlloyBot({ reportContext }: { reportContext?: Record<string, any> | null }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const hasFileContext = Boolean(reportContext?.file);
+  const suggestions = useMemo(() => hasFileContext ? SUGGESTIONS : GENERAL_SUGGESTIONS, [hasFileContext]);
   const [messages, setMessages] = useState<Msg[]>(() => [
-    { role: 'bot', text: "Hi! I'm AlloyBot. Ask me anything about HPDC, alloys, pricing, or your current estimate.", ts: Date.now() },
+    { role: 'bot', text: "Hi, I'm AlloyBot. Upload a CAD file and I can explain the actual geometry, cost, assumptions, and market data from your quote.", ts: Date.now() },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -236,10 +245,7 @@ export default function AlloyBot({ reportContext }: { reportContext?: Record<str
     setMessages((prev) => [...prev, { role: 'user', text: msg, ts: Date.now() }]);
     setLoading(true);
     try {
-      const context = reportContext
-        ? { metal: reportContext.metal, total_unit_cost: reportContext.total_unit_cost }
-        : undefined;
-      const { data } = await axios.post(`${API_URL}/api/chat`, { message: msg, context });
+      const { data } = await axios.post(`${API_URL}/api/chat`, { message: msg, context: reportContext || undefined });
       setMessages((prev) => [...prev, { role: 'bot', text: data.reply, ts: Date.now() }]);
     } catch {
       setMessages((prev) => [...prev, { role: 'bot', text: 'Network error — please try again.', ts: Date.now() }]);
@@ -273,7 +279,7 @@ export default function AlloyBot({ reportContext }: { reportContext?: Record<str
       <AnimatePresence>
         {open && (
           <motion.div
-            className={`bot-window ${expanded ? 'bot-expanded' : ''}`}
+            className={`bot-window ${expanded ? 'bot-expanded' : ''} ${loading ? 'bot-thinking' : ''}`}
             initial={{ opacity: 0, y: 40, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.92 }}
@@ -284,7 +290,7 @@ export default function AlloyBot({ reportContext }: { reportContext?: Record<str
               <PikaAvatar speaking={loading} />
               <div>
                 <strong>AlloyBot</strong>
-                <span>{loading ? 'Thinking…' : 'HPDC expert · Live access'}</span>
+                <span>{loading ? 'Reading your part data...' : hasFileContext ? `Using ${reportContext?.file}` : 'Waiting for uploaded CAD data'}</span>
               </div>
               <div className="bot-header-actions">
                 <button type="button" onClick={() => setExpanded((e) => !e)} title={expanded ? 'Minimize' : 'Expand'}>
@@ -298,6 +304,13 @@ export default function AlloyBot({ reportContext }: { reportContext?: Record<str
 
             {/* Messages */}
             <div className="bot-messages">
+              {hasFileContext && (
+                <div className="bot-context-strip">
+                  <strong>Part context active</strong>
+                  <span>{reportContext?.file} · {reportContext?.market?.alloy?.replaceAll('_', ' ') || 'selected alloy'}</span>
+                </div>
+              )}
+              {loading && <div className="bot-energy-field"><i /><i /><i /><i /><i /><i /></div>}
               {messages.map((m, i) => (
                 <motion.div
                   key={i}
@@ -323,7 +336,7 @@ export default function AlloyBot({ reportContext }: { reportContext?: Record<str
             {/* Quick suggestions (only if no user messages yet) */}
             {messages.filter((m) => m.role === 'user').length === 0 && (
               <div className="bot-suggestions">
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <button key={s} type="button" className="bot-suggestion" onClick={() => send(s)}>
                     {s}
                   </button>

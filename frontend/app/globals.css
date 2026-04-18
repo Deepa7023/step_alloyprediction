@@ -1543,6 +1543,13 @@ select option {
   overflow: hidden;
 }
 
+.bot-window.bot-thinking {
+  box-shadow:
+    0 24px 64px rgba(0,0,0,0.3),
+    0 0 0 1px rgba(255, 211, 56, 0.35),
+    0 0 34px rgba(255, 211, 56, 0.22);
+}
+
 .bot-window.bot-expanded {
   width: min(640px, 96vw);
   max-height: 80vh;
@@ -1604,7 +1611,59 @@ select option {
   gap: 10px;
   scrollbar-width: thin;
   scrollbar-color: var(--line) transparent;
+  position: relative;
 }
+
+.bot-context-strip {
+  border: 1px solid rgba(16,185,129,0.35);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background:
+    linear-gradient(135deg, rgba(16,185,129,0.12), rgba(255,211,56,0.14)),
+    var(--surface);
+}
+
+.bot-context-strip strong,
+.bot-context-strip span {
+  display: block;
+}
+
+.bot-context-strip strong {
+  color: var(--primary-strong);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.bot-context-strip span {
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.bot-energy-field {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bot-energy-field i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffd338;
+  box-shadow: 0 0 14px rgba(255, 211, 56, 0.95);
+  animation: botSparkDrift 1.2s ease-in-out infinite;
+}
+
+.bot-energy-field i:nth-child(1) { left: 12%; top: 18%; animation-delay: 0s; }
+.bot-energy-field i:nth-child(2) { left: 82%; top: 22%; animation-delay: 0.15s; }
+.bot-energy-field i:nth-child(3) { left: 64%; top: 54%; animation-delay: 0.3s; }
+.bot-energy-field i:nth-child(4) { left: 24%; top: 70%; animation-delay: 0.45s; }
+.bot-energy-field i:nth-child(5) { left: 46%; top: 36%; animation-delay: 0.6s; }
+.bot-energy-field i:nth-child(6) { left: 88%; top: 78%; animation-delay: 0.75s; }
 
 .bot-msg {
   display: flex;
@@ -1671,6 +1730,12 @@ select option {
 @keyframes typingPulse {
   0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
   40%           { opacity: 1;    transform: scale(1.15); }
+}
+
+@keyframes botSparkDrift {
+  0% { opacity: 0; transform: translateY(10px) scale(0.5); }
+  35% { opacity: 1; transform: translateY(0) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-18px) scale(0.35); }
 }
 
 .bot-suggestions {
@@ -2128,11 +2193,13 @@ select option {
 .pika-svg {
   display: block;
   overflow: visible;
+  transform-origin: 50% 70%;
+  animation: pikaGifFrame 1.15s steps(6) infinite;
 }
 
 .pika-avatar {
   transform-style: preserve-3d;
-  animation: pikaBob 2.4s ease-in-out infinite;
+  animation: pikaBob 1.65s ease-in-out infinite;
   filter: drop-shadow(0 10px 14px rgba(245, 168, 0, 0.48)) drop-shadow(0 4px 5px rgba(0,0,0,0.3));
 }
 
@@ -2142,11 +2209,11 @@ select option {
 }
 
 .pika-character.speaking {
-  animation: pikaTalk 0.55s ease-in-out infinite;
+  animation: pikaTalk 0.42s steps(3) infinite;
 }
 
 .pika-electric {
-  animation: pikaZap 0.7s ease-in-out infinite;
+  animation: pikaZap 0.45s steps(2) infinite;
 }
 
 .pika-mouth {
@@ -2168,6 +2235,11 @@ select option {
 @keyframes pikaBob {
   0%, 100% { transform: translateY(0) rotateX(0deg); }
   50% { transform: translateY(-6px) rotateX(7deg); }
+}
+
+@keyframes pikaGifFrame {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.018); }
 }
 
 @keyframes pikaTilt {

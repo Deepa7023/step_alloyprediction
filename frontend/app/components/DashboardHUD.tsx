@@ -77,7 +77,54 @@ export default function DashboardHUD({ persona, data, isProcessing }: DashboardH
   const spotPrice = (market.live_spot_price_usd ?? market.reference_price_usd ?? 0) * rate;
   const locationPrice = (market.live_location_adjusted_price_usd ?? market.reference_location_adjusted_price_usd ?? 0) * rate;
 
-  const botContext = { metal: market.metal, total_unit_cost: cost.total_unit_cost };
+  const botContext = {
+    file: data.file,
+    engine: data.engine,
+    geometry: {
+      dimensions_mm: traits.dimensions,
+      volume_cm3: volumeCm3,
+      surface_area_cm2: surfaceCm2,
+      projected_area_mm2: traits.projected_area,
+      topology: traits.topology,
+      validation: traits.validation,
+    },
+    manufacturing: {
+      assumptions: data.manufacturing_assumptions?.decisions,
+      confidence: data.manufacturing_assumptions?.confidence,
+      summary: data.manufacturing_assumptions?.audience_summary,
+      location: data.manufacturing_assumptions?.location || market.location,
+    },
+    cost: {
+      total_unit_cost_usd: cost.total_unit_cost,
+      per_part_cost_usd: cost.per_part_cost ?? cost.total_unit_cost,
+      material_cost_usd: cost.material_cost,
+      machine_cost_usd: cost.machine_cost,
+      die_amortization_usd: cost.amortization,
+      finishing_cost_usd: cost.port_cost,
+      weight_g: cost.weight_g,
+      tooling_estimate_usd: cost.tooling_estimate,
+      selected_machine_tons: cost.machine_details?.selected_machine,
+      cycle_time_s: cost.machine_details?.cycle_time_s,
+      shots_per_hour: cost.machine_details?.shots_per_hour,
+    },
+    market: {
+      alloy: market.metal,
+      price_source: market.price_source,
+      price_status: market.price_status,
+      price_as_of: market.price_as_of,
+      spot_price_usd_per_kg: market.live_spot_price_usd ?? market.reference_price_usd,
+      location_adjusted_usd_per_kg: market.live_location_adjusted_price_usd ?? market.reference_location_adjusted_price_usd,
+      regional_premium_percent: market.regional_premium_percent,
+      freight_usd_per_kg: market.estimated_freight_usd_per_kg,
+      plant_location: market.location_geodata,
+    },
+    ai_notes: data.ai_insight ? {
+      summary: data.ai_insight.summary,
+      key_drivers: data.ai_insight.key_drivers,
+      risk_notes: data.ai_insight.risk_notes,
+      recommendation: data.ai_insight.recommendation,
+    } : undefined,
+  };
 
   return (
     <>
