@@ -6,10 +6,61 @@ import io
 import uuid
 import time
 import logging
+import tempfile
 
 from .step_engine_ocp import PreciseSTEPAnalyzer, detect_metal_from_step
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_CAD_EXTENSIONS = [
+    ".step", ".stp", ".iges", ".igs",
+    ".stl", ".obj", ".ply", ".glb", ".gltf",
+    ".3mf", ".off", ".dae"
+]
+
+
+def _load_mesh(file_path):
+    mesh_raw = trimesh.load(file_path)
+    if isinstance(mesh_raw, trimesh.Scene):
+        parts = [g for g in mesh_raw.geometry.values() if isinstance(g, trimesh.Trimesh)]
+        if parts:
+            return trimesh.util.concatenate(parts)
+    elif isinstance(mesh_raw, trimesh.Trimesh):
+        return mesh_raw
+    return None
+
+
+def _mesh_brep_with_gmsh(file_path):
+    temp_stl = None
+    try:
+        import gmsh
+
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("PreviewMesh")
+        gmsh.merge(file_path)
+        gmsh.option.setNumber("Mesh.Algorithm", 6)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", 2)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", 12)
+        gmsh.model.mesh.generate(2)
+        temp_stl = os.path.join(tempfile.gettempdir(), f"preview_{uuid.uuid4().hex}.stl")
+        gmsh.write(temp_stl)
+        gmsh.finalize()
+        return _load_mesh(temp_stl)
+    except Exception as e:
+        logger.warning(f"GMSH preview mesh failed: {e}")
+        try:
+            import gmsh
+            gmsh.finalize()
+        except Exception:
+            pass
+        return None
+    finally:
+        if temp_stl and os.path.exists(temp_stl):
+            try:
+                os.remove(temp_stl)
+            except Exception:
+                pass
 
 
 def analyze_cad(file_path):
@@ -26,6 +77,12 @@ def analyze_cad(file_path):
     detected_metal = None
 
     try:
+        if ext not in SUPPORTED_CAD_EXTENSIONS:
+            raise ValueError(
+                f"UNSUPPORTED_CAD_FORMAT: {ext or 'unknown'} is not supported. "
+                f"Supported formats: {', '.join(SUPPORTED_CAD_EXTENSIONS)}"
+            )
+
         # ── Step 0: Metal Detection (Metadata) ──────────────────────────
         if ext in ['.step', '.stp']:
             detected_metal = detect_metal_from_step(file_path)
@@ -44,15 +101,12 @@ def analyze_cad(file_path):
 
         # ── Step 2: Trimesh Load (for preview mesh) ──────────────────────
         try:
-            mesh_raw = trimesh.load(file_path)
-            if isinstance(mesh_raw, trimesh.Scene):
-                parts = [g for g in mesh_raw.geometry.values() if isinstance(g, trimesh.Trimesh)]
-                if parts:
-                    mesh = trimesh.util.concatenate(parts)
-            elif isinstance(mesh_raw, trimesh.Trimesh):
-                mesh = mesh_raw
+            mesh = _load_mesh(file_path)
         except Exception as e:
             logger.warning(f"Trimesh load failed: {e}")
+
+        if mesh is None and ext in ['.step', '.stp', '.iges', '.igs']:
+            mesh = _mesh_brep_with_gmsh(file_path)
 
         # ── Step 3: Failure handling ─────────────────────────────────────
         if mesh is None and precise_data.get("status") != "success":
@@ -70,6 +124,10 @@ def analyze_cad(file_path):
             volume_cm3 = abs(mesh.volume) / 1000.0
         if surface_cm2 is None and mesh is not None:
             surface_cm2 = mesh.area / 100.0
+        if volume_cm3 is None:
+            volume_cm3 = 0.001
+        if surface_cm2 is None:
+            surface_cm2 = 0.01
 
         # Dimensions
         if "dimensions" in precise_data:

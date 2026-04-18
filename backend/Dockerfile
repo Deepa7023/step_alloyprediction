@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libx11-6 \
     libxext6 \
     libxrender1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,7 +21,6 @@ COPY . .
 ENV PORT=5000
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV MALLOC_ARENA_MAX=2
 
 EXPOSE 5000
 
