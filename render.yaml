@@ -11,5 +11,7 @@ services:
         value: 3.11.0
       - key: PYTHONPATH
         value: /app
+      - key: CAD_BREP_ENABLED
+        value: false
     healthCheckPath: /api/health
     plan: free

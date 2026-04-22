@@ -2,6 +2,4 @@ Flask==3.0.3
 gunicorn==21.2.0
 trimesh==4.1.2
 numpy==1.26.4
-cadquery-ocp==7.9.3.1
-gmsh==4.12.1
 python-dotenv==1.0.1

@@ -4,17 +4,14 @@ import numpy as np
 import uuid
 import time
 import logging
-import tempfile
 
-from .step_engine_ocp import PreciseSTEPAnalyzer, detect_metal_from_step
+from .step_engine_ocp import METAL_KEYWORDS, PreciseSTEPAnalyzer, detect_metal_from_step
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_CAD_EXTENSIONS = [
-    ".step", ".stp", ".iges", ".igs",
-    ".stl", ".obj", ".ply", ".glb", ".gltf",
-    ".3mf", ".off", ".dae"
-]
+BREP_EXTENSIONS = [".step", ".stp", ".iges", ".igs"]
+MESH_EXTENSIONS = [".stl", ".obj", ".ply", ".glb", ".gltf", ".3mf", ".off", ".dae"]
+SUPPORTED_CAD_EXTENSIONS = BREP_EXTENSIONS + MESH_EXTENSIONS
 
 
 def _load_mesh(file_path):
@@ -28,45 +25,29 @@ def _load_mesh(file_path):
     return None
 
 
-def _mesh_brep_with_gmsh(file_path):
-    temp_stl = None
-    try:
-        import gmsh
+def _brep_enabled():
+    return os.getenv("CAD_BREP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
-        gmsh.initialize()
-        gmsh.option.setNumber("General.Terminal", 0)
-        gmsh.model.add("PreviewMesh")
-        gmsh.merge(file_path)
-        gmsh.option.setNumber("Mesh.Algorithm", 6)
-        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", 2)
-        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", 12)
-        gmsh.model.mesh.generate(2)
-        temp_stl = os.path.join(tempfile.gettempdir(), f"preview_{uuid.uuid4().hex}.stl")
-        gmsh.write(temp_stl)
-        gmsh.finalize()
-        return _load_mesh(temp_stl)
-    except Exception as e:
-        logger.warning(f"GMSH preview mesh failed: {e}")
-        try:
-            import gmsh
-            gmsh.finalize()
-        except Exception:
-            pass
-        return None
-    finally:
-        if temp_stl and os.path.exists(temp_stl):
-            try:
-                os.remove(temp_stl)
-            except Exception:
-                pass
+
+def detect_metal_hint(file_path):
+    text = os.path.basename(file_path).upper()
+    try:
+        with open(file_path, "r", errors="ignore") as handle:
+            text = f"{text}\n{handle.read(16384).upper()}"
+    except Exception:
+        pass
+
+    for keyword, metal_name in METAL_KEYWORDS.items():
+        if keyword in text:
+            return metal_name
+    return None
 
 
 def analyze_cad(file_path):
     """
     Analyzes a CAD file with dual-engine fallback:
-      1. OCP (cadquery-ocp) — Precise B-Rep analysis
-      2. GMSH — Mesh-based approximation  
-      3. Trimesh — For preview mesh and non-STEP formats
+      1. Trimesh for mesh formats (Render-safe default)
+      2. Optional OCP/GMSH B-Rep analysis when CAD_BREP_ENABLED=true
     """
     analysis_id = str(uuid.uuid4())
     ext = os.path.splitext(file_path)[1].lower()
@@ -82,13 +63,20 @@ def analyze_cad(file_path):
             )
 
         # ── Step 0: Metal Detection (Metadata) ──────────────────────────
-        if ext in ['.step', '.stp']:
+        detected_metal = detect_metal_hint(file_path)
+        if not detected_metal and ext in ['.step', '.stp']:
             detected_metal = detect_metal_from_step(file_path)
             if detected_metal:
                 logger.info(f"METAL_DETECT: Auto-detected {detected_metal}")
 
+        if ext in BREP_EXTENSIONS and not _brep_enabled():
+            raise ValueError(
+                "BREP_DISABLED_ON_RENDER: STEP/IGES parsing is disabled for this Render-safe build "
+                "to prevent 502 worker crashes. Export the model as STL, OBJ, PLY, GLB, 3MF, OFF, or DAE and upload again."
+            )
+
         # ── Step 1: Precise Analysis (STEP/IGES only) ────────────────────
-        if ext in ['.step', '.stp', '.iges', '.igs']:
+        if ext in BREP_EXTENSIONS:
             analyzer = PreciseSTEPAnalyzer()
             precise_data = analyzer.analyze(file_path)
 
@@ -102,9 +90,6 @@ def analyze_cad(file_path):
             mesh = _load_mesh(file_path)
         except Exception as e:
             logger.warning(f"Trimesh load failed: {e}")
-
-        if mesh is None and ext in ['.step', '.stp', '.iges', '.igs']:
-            mesh = _mesh_brep_with_gmsh(file_path)
 
         # ── Step 3: Failure handling ─────────────────────────────────────
         if mesh is None and precise_data.get("status") != "success":
