@@ -7,6 +7,7 @@ Includes: Metal Auto-Detection from STEP file metadata
 
 import logging
 import os
+import tempfile
 import gc
 import uuid
 from typing import Dict, Any, Optional
@@ -189,7 +190,7 @@ def _analyze_with_gmsh(file_path: str) -> Dict[str, Any]:
         gmsh.option.setNumber("Mesh.Algorithm", 6)
         gmsh.model.mesh.generate(2)
 
-        temp_stl = f"/tmp/gmsh_{uuid.uuid4().hex[:8]}.stl"
+        temp_stl = os.path.join(tempfile.gettempdir(), f"gmsh_{uuid.uuid4().hex[:8]}.stl")
         gmsh.write(temp_stl)
         gmsh.finalize()
 

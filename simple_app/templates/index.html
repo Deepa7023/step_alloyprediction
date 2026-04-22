@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>STEP Alloy Cost</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">HPDC Cost Agent</p>
+          <strong>AlloyQuote Studio Lite</strong>
+        </div>
+        <nav aria-label="App status">
+          <span>CAD geometry</span>
+          <span>Auto alloy</span>
+          <span>INR quote</span>
+        </nav>
+      </header>
+
+      <main class="main-container">
+        <aside class="intake">
+          <div class="spark-layer" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+
+          <section class="brand-block">
+            <div class="brand-mark" aria-hidden="true">⌁</div>
+            <div>
+              <p class="eyebrow">CAD-driven HPDC estimator</p>
+              <h1>Upload CAD. Get the per-part quote.</h1>
+              <p class="lede">The simplified agent extracts measured geometry, auto-detects alloy hints, and returns a focused INR cost breakdown.</p>
+            </div>
+          </section>
+
+          <div class="status-strip">
+            <span class="status-dot"></span>
+            <span id="status">Upload CAD. Alloy will be detected automatically when metadata is available.</span>
+          </div>
+
+          <form id="quoteForm" class="form-stack">
+            <div class="field-block upload-block">
+              <label for="file">CAD file</label>
+              <input id="file" name="file" type="file" accept=".step,.stp,.iges,.igs,.stl,.obj,.ply,.glb,.gltf,.3mf,.off,.dae" required hidden>
+              <button class="upload-button" type="button" id="pickFile">
+                <span class="button-icon">↥</span>
+                <span id="fileLabel">Upload CAD file</span>
+              </button>
+              <p class="supported-copy">{{ supported }}</p>
+            </div>
+
+            <div class="field-block">
+              <label>Alloy type</label>
+              <div class="input-with-icon readonly">
+                <span>⚙</span>
+                <strong>Auto from CAD / default</strong>
+              </div>
+            </div>
+
+            <details class="advanced-panel" open>
+              <summary>Quote inputs</summary>
+              <div class="field-grid">
+                <div class="field-block">
+                  <label for="annual_volume">Pieces per year</label>
+                  <div class="input-with-icon">
+                    <span>□</span>
+                    <input id="annual_volume" name="annual_volume" type="number" min="1" value="10000">
+                  </div>
+                </div>
+                <div class="field-block">
+                  <label for="sliders">Sliders in die</label>
+                  <div class="input-with-icon">
+                    <span>≡</span>
+                    <input id="sliders" name="sliders" type="number" min="0" value="0">
+                  </div>
+                </div>
+                <div class="field-block">
+                  <label for="port_cost_inr">Port / finishing cost</label>
+                  <div class="input-with-icon">
+                    <span>₹</span>
+                    <input id="port_cost_inr" name="port_cost_inr" type="number" min="0" step="0.01" value="0">
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <div class="quote-preview">
+              <div>
+                <span>Mode</span>
+                <strong>CAD assisted</strong>
+              </div>
+              <div>
+                <span>Alloy</span>
+                <strong>Auto</strong>
+              </div>
+              <div>
+                <span>Output</span>
+                <strong>INR</strong>
+              </div>
+            </div>
+
+            <button class="primary-action" type="submit">
+              <span class="loading-icon"></span>
+              Run per-part estimation
+            </button>
+          </form>
+        </aside>
+
+        <section class="hud-pane">
+          <div id="emptyState" class="empty-state hero-state">
+            <div class="hero-copy">
+              <div class="hero-icon" aria-hidden="true">⌬</div>
+              <p class="eyebrow">Real CAD intelligence</p>
+              <h2>Ready for CAD geometry extraction</h2>
+              <p>Upload STEP, IGES, STL, OBJ or another supported file. The report shows only measured geometry and the per-part cost breakdown.</p>
+            </div>
+          </div>
+
+          <div id="processingState" class="empty-state processing-state hidden">
+            <div class="spinner"></div>
+            <h2>Building quote</h2>
+            <p>Reading CAD geometry, detecting alloy hints, and calculating HPDC cost.</p>
+          </div>
+
+          <section id="results" class="report hidden">
+            <div class="report-header">
+              <div>
+                <p class="eyebrow">Completed quote</p>
+                <h2 id="reportFile">CAD file</h2>
+                <p class="subtle" id="reportEngine">Geometry engine</p>
+              </div>
+              <div class="report-status">
+                <span>✓</span>
+                <strong>Per-part cost ready</strong>
+              </div>
+            </div>
+
+            <div class="cost-hero">
+              <div>
+                <p>Per part HPDC cost (Estimated)</p>
+                <strong id="costTotal">₹0.00</strong>
+                <span id="costAlloy">Auto alloy</span>
+              </div>
+              <div class="cost-range">
+                <span>Expected fluctuation</span>
+                <strong id="costRange">₹0.00 - ₹0.00</strong>
+                <small id="costRangeNote">Range includes metal and process variation.</small>
+              </div>
+            </div>
+
+            <div class="report-grid simple-report-grid">
+              <article class="metric-panel">
+                <div class="section-title">
+                  <span class="section-icon">◎</span>
+                  <span>Geometry Extracted From CAD</span>
+                </div>
+                <div id="geometryGrid" class="metric-grid"></div>
+              </article>
+
+              <article class="metric-panel">
+                <div class="section-title">
+                  <span class="section-icon">₹</span>
+                  <span>Per Part Cost Breakdown (₹)</span>
+                </div>
+                <div id="costBreakdown" class="breakdown-list"></div>
+                <div id="costMeta" class="metric-grid compact"></div>
+              </article>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

@@ -10,32 +10,13 @@ env/
 venv/
 ENV/
 
-# JavaScript / Next.js
-node_modules/
-frontend/node_modules/
-.next/
-frontend/.next/
-out/
-frontend/out/
-*.tsbuildinfo
-
 # Logs
 *.log
-backend-dev.log
-backend-dev.err.log
-frontend-dev.log
-frontend-dev.err.log
+.flask-server.pid
 
 # CAD Files (Privacy and Size)
 uploads/
-backend/uploads/
-backend/uploads/*.STEP
-backend/uploads/*.step
-backend/uploads/*.stp
-backend/uploads/*.iges
-backend/uploads/*.igs
-backend/uploads/*.glb
-backend/uploads/*.stl
+simple_app/uploads/
 
 # Debug/Temp
 debug_prices.py

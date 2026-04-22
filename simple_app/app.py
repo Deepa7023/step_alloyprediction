@@ -1,0 +1,149 @@
+import os
+import uuid
+
+from flask import Flask, jsonify, render_template, request
+from werkzeug.utils import secure_filename
+
+from .logic.cad_analyzer import SUPPORTED_CAD_EXTENSIONS, analyze_cad
+from .logic.cost_engine import METAL_PROPERTIES, calculate_hpdc_cost
+from .logic.step_engine_ocp import METAL_KEYWORDS
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+INR_RATE = 83.5
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024
+
+
+def _allowed_file(filename):
+    return os.path.splitext(filename or "")[1].lower() in SUPPORTED_CAD_EXTENSIONS
+
+
+def _float_form(name, default):
+    try:
+        return float(request.form.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_form(name, default):
+    try:
+        return int(request.form.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _detect_alloy_hint(file_path, filename, analyzer_detected):
+    if analyzer_detected in METAL_PROPERTIES:
+        return analyzer_detected, "CAD metadata"
+
+    text = filename.upper()
+    try:
+        with open(file_path, "r", errors="ignore") as handle:
+            text = f"{text}\n{handle.read(16384).upper()}"
+    except Exception:
+        pass
+
+    for keyword, alloy in METAL_KEYWORDS.items():
+        if alloy in METAL_PROPERTIES and keyword in text:
+            return alloy, "File metadata"
+
+    return "Aluminum_A380", "Default fallback"
+
+
+@app.get("/")
+def index():
+    return render_template(
+        "index.html",
+        default_metal="Aluminum_A380",
+        supported=", ".join(SUPPORTED_CAD_EXTENSIONS),
+    )
+
+
+@app.get("/api/health")
+def health():
+    return jsonify({"status": "healthy", "app": "simple-flask-hpdc", "version": "auto-alloy"})
+
+
+@app.post("/api/analyze")
+def analyze():
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"error": "Upload a CAD file first."}), 400
+
+    if not _allowed_file(file.filename):
+        return jsonify({"error": "Unsupported CAD format."}), 400
+
+    filename = secure_filename(file.filename)
+    saved_name = f"{uuid.uuid4().hex}_{filename}"
+    file_path = os.path.join(UPLOAD_FOLDER, saved_name)
+    file.save(file_path)
+
+    result = analyze_cad(file_path)
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 500
+
+    traits = result["traits"]
+    detected_metal = result.get("detected_metal")
+    metal, alloy_source = _detect_alloy_hint(file_path, file.filename, detected_metal)
+    annual_volume = _int_form("annual_volume", 10000)
+    sliders = _int_form("sliders", 0)
+    port_cost_inr = _float_form("port_cost_inr", 0)
+    port_cost_usd = port_cost_inr / INR_RATE
+
+    cost = calculate_hpdc_cost(
+        traits=traits,
+        metal=metal,
+        annual_volume=annual_volume,
+        sliders=sliders,
+        location_multiplier=1.0,
+        port_cost=port_cost_usd,
+    )
+
+    breakdown_usd = {
+        "Material": cost["material_cost"],
+        "Machine conversion": cost["machine_cost"],
+        "Tooling amortization": cost["amortization"],
+        "Port / handling": cost["port_cost"],
+    }
+    breakdown_inr = {
+        label: round(value * INR_RATE, 2) for label, value in breakdown_usd.items()
+    }
+
+    response = {
+        "file": file.filename,
+        "engine": result["engine"],
+        "geometry": {
+            "volume_mm3": round(traits.get("volume", 0), 2),
+            "surface_area_mm2": round(traits.get("surface_area", 0), 2),
+            "projected_area_mm2": round(traits.get("projected_area", 0), 2),
+            "dimensions_mm": traits.get("dimensions", {}),
+            "topology": traits.get("topology", {}),
+            "validation": traits.get("validation", {}),
+        },
+        "cost": {
+            "alloy": cost["alloy"],
+            "alloy_source": alloy_source,
+            "detected_alloy": metal if alloy_source != "Default fallback" else None,
+            "annual_volume": cost["annual_volume"],
+            "weight_g": cost["weight_g"],
+            "tooling_estimate_inr": round(cost["tooling_estimate"] * INR_RATE, 2),
+            "breakdown_inr": breakdown_inr,
+            "per_part_cost_inr": round(cost["total_unit_cost"] * INR_RATE, 2),
+            "range_inr": {
+                "min": round(cost["fluctuation_range"]["min"] * INR_RATE, 2),
+                "max": round(cost["fluctuation_range"]["max"] * INR_RATE, 2),
+                "percent": cost["fluctuation_range"]["percent"],
+            },
+        },
+    }
+    return jsonify(response)
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=False, use_reloader=False)
