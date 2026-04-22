@@ -4,6 +4,7 @@ import numpy as np
 import uuid
 import time
 import logging
+import re
 
 from .step_engine_ocp import METAL_KEYWORDS, PreciseSTEPAnalyzer, detect_metal_from_step
 
@@ -23,6 +24,60 @@ def _load_mesh(file_path):
     elif isinstance(mesh_raw, trimesh.Trimesh):
         return mesh_raw
     return None
+
+
+def _analyze_step_lightweight(file_path):
+    """
+    Render-safe STEP fallback.
+
+    It reads CARTESIAN_POINT coordinates from the STEP text and derives a
+    bounding box. Volume/surface are estimated from that box because exact B-Rep
+    mass properties require heavy CAD kernels that can crash small Render workers.
+    """
+    point_pattern = re.compile(
+        r"CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*\)\s*\)",
+        re.IGNORECASE,
+    )
+    points = []
+    with open(file_path, "r", errors="ignore") as handle:
+        for line in handle:
+            match = point_pattern.search(line)
+            if match:
+                points.append(tuple(float(value) for value in match.groups()))
+
+    if len(points) < 2:
+        raise ValueError(
+            "STEP_LIGHTWEIGHT_PARSE_FAILURE: No usable CARTESIAN_POINT geometry was found. "
+            "Export this part as binary STL/OBJ, or upload a STEP file with explicit B-Rep coordinates."
+        )
+
+    arr = np.array(points, dtype=float)
+    mins = arr.min(axis=0)
+    maxs = arr.max(axis=0)
+    extents = np.maximum(maxs - mins, 0.001)
+    x, y, z = [round(float(value), 2) for value in extents]
+
+    bbox_volume_mm3 = float(x * y * z)
+    bbox_surface_mm2 = float(2 * ((x * y) + (y * z) + (x * z)))
+    fill_factor = 0.35
+
+    return {
+        "volume": bbox_volume_mm3 * fill_factor,
+        "surface_area": bbox_surface_mm2 * 0.75,
+        "dimensions": {"x": x, "y": y, "z": z},
+        "projected_area": float(max(x * y, y * z, x * z)),
+        "topology": {
+            "solids": 1,
+            "faces": 0,
+            "edges": 0,
+            "vertices": len(points),
+        },
+        "validation": {
+            "is_manifold": False,
+            "integrity_score": 45,
+            "note": "Render-safe STEP estimate from coordinate bounding box",
+        },
+    }
 
 
 def _brep_enabled():
@@ -70,10 +125,14 @@ def analyze_cad(file_path):
                 logger.info(f"METAL_DETECT: Auto-detected {detected_metal}")
 
         if ext in BREP_EXTENSIONS and not _brep_enabled():
-            raise ValueError(
-                "BREP_DISABLED_ON_RENDER: STEP/IGES parsing is disabled for this Render-safe build "
-                "to prevent 502 worker crashes. Export the model as STL, OBJ, PLY, GLB, 3MF, OFF, or DAE and upload again."
-            )
+            traits = _analyze_step_lightweight(file_path)
+            return {
+                "analysis_id": analysis_id,
+                "traits": traits,
+                "engine": "STEP_LIGHTWEIGHT_RENDER_SAFE",
+                "detected_metal": detected_metal,
+                "metadata": {"location": "PENDING_SYNC", "timestamp": time.time()},
+            }
 
         # ── Step 1: Precise Analysis (STEP/IGES only) ────────────────────
         if ext in BREP_EXTENSIONS:

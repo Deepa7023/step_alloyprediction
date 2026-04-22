@@ -60,8 +60,8 @@ def _detect_alloy_hint(file_path, filename, analyzer_detected):
 
 def _cad_error_response(message, status=422):
     lower = str(message).lower()
-    if "brep_disabled_on_render" in lower:
-        hint = "Render-safe mode accepts mesh CAD files. Export your CAD as STL or OBJ, then upload that file."
+    if "step_lightweight_parse_failure" in lower:
+        hint = "This STEP file does not expose enough coordinate geometry for the lightweight Render parser. Export it as binary STL or OBJ and upload again."
     elif "geometry_parse_failure" in lower or "could not be analyzed" in lower:
         hint = "This CAD file could not be parsed on the server. Try exporting the model as binary STL, OBJ, or a clean AP214/AP242 STEP file."
     elif "unsupported" in lower:
