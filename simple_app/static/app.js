@@ -54,13 +54,16 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   statusEl.textContent = "Extracting CAD geometry and cost inputs...";
   showProcessing();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 120000);
 
   try {
     const response = await fetch("/api/analyze", {
       method: "POST",
-      body: new FormData(form)
+      body: new FormData(form),
+      signal: controller.signal
     });
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Analysis failed.");
 
     const dims = data.geometry.dimensions_mm || {};
@@ -105,6 +108,10 @@ form.addEventListener("submit", async (event) => {
   } catch (error) {
     processingState.classList.add("hidden");
     emptyState.classList.remove("hidden");
-    statusEl.textContent = error.message;
+    statusEl.textContent = error.name === "AbortError"
+      ? "Analysis took too long. Try a smaller STL/STEP file or simplify the CAD before upload."
+      : error.message;
+  } finally {
+    window.clearTimeout(timeout);
   }
 });

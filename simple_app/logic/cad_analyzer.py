@@ -1,8 +1,6 @@
 import trimesh
 import os
 import numpy as np
-import base64
-import io
 import uuid
 import time
 import logging
@@ -177,12 +175,6 @@ def analyze_cad(file_path):
         logger.info(f"GEOMETRY: Vol={round(volume_cm3,2)}cm3, ProjArea={round(max_projected_area,2)}mm2")
 
         # ── Step 5: Preview ──────────────────────────────────────────────
-        preview_b64 = ""
-        if mesh is not None:
-            buf = io.BytesIO()
-            mesh.export(buf, file_type='stl')
-            preview_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-
         topology = precise_data.get("topology", {
             "solids": 1, "faces": len(mesh.faces) if mesh else 0,
             "edges": 0, "vertices": len(mesh.vertices) if mesh else 0
@@ -197,7 +189,6 @@ def analyze_cad(file_path):
             "surface_area": float(surface_cm2 * 100.0),
             "dimensions": dimensions,
             "projected_area": float(max_projected_area),
-            "preview_mesh": f"data:model/stl;base64,{preview_b64}" if preview_b64 else "",
             "topology": topology,
             "validation": validation,
         }
