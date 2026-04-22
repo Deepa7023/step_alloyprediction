@@ -13,5 +13,9 @@ services:
         value: /app
       - key: CAD_BREP_ENABLED
         value: false
+      - key: STEP_LIGHTWEIGHT_FILL_FACTOR
+        value: 0.013
+      - key: STEP_LIGHTWEIGHT_SURFACE_FACTOR
+        value: 0.15
     healthCheckPath: /api/health
     plan: free

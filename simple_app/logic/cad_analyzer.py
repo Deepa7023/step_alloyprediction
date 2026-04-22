@@ -59,11 +59,12 @@ def _analyze_step_lightweight(file_path):
 
     bbox_volume_mm3 = float(x * y * z)
     bbox_surface_mm2 = float(2 * ((x * y) + (y * z) + (x * z)))
-    fill_factor = 0.35
+    fill_factor = _float_env("STEP_LIGHTWEIGHT_FILL_FACTOR", 0.013)
+    surface_factor = _float_env("STEP_LIGHTWEIGHT_SURFACE_FACTOR", 0.15)
 
     return {
         "volume": bbox_volume_mm3 * fill_factor,
-        "surface_area": bbox_surface_mm2 * 0.75,
+        "surface_area": bbox_surface_mm2 * surface_factor,
         "dimensions": {"x": x, "y": y, "z": z},
         "projected_area": float(max(x * y, y * z, x * z)),
         "topology": {
@@ -75,13 +76,20 @@ def _analyze_step_lightweight(file_path):
         "validation": {
             "is_manifold": False,
             "integrity_score": 45,
-            "note": "Render-safe STEP estimate from coordinate bounding box",
+            "note": f"Render-safe STEP estimate from coordinate bounding box; fill_factor={fill_factor}",
         },
     }
 
 
 def _brep_enabled():
     return os.getenv("CAD_BREP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _float_env(name, default):
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
 
 
 def detect_metal_hint(file_path):
