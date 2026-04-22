@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 
 from flask import Flask, jsonify, render_template, request
 from werkzeug.utils import secure_filename
@@ -14,6 +15,8 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 INR_RATE = 83.5
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 60 * 1024 * 1024
@@ -55,6 +58,22 @@ def _detect_alloy_hint(file_path, filename, analyzer_detected):
     return "Aluminum_A380", "Default fallback"
 
 
+def _cad_error_response(message, status=422):
+    lower = str(message).lower()
+    if "geometry_parse_failure" in lower or "could not be analyzed" in lower:
+        hint = "This CAD file could not be parsed on the server. Try exporting the model as binary STL, OBJ, or a clean AP214/AP242 STEP file."
+    elif "unsupported" in lower:
+        hint = "Use STEP, STP, IGES, IGS, STL, OBJ, PLY, GLB, GLTF, 3MF, OFF, or DAE."
+    else:
+        hint = "Please try a smaller or simplified CAD file. For Render free tier, STL/OBJ files are the most reliable."
+
+    return jsonify({
+        "error": "CAD file could not be processed.",
+        "detail": str(message),
+        "hint": hint,
+    }), status
+
+
 @app.get("/")
 def index():
     return render_template(
@@ -85,7 +104,8 @@ def analyze():
 
     result = analyze_cad(file_path)
     if "error" in result:
-        return jsonify({"error": result["error"]}), 500
+        logger.warning("CAD analysis failed for %s: %s", file.filename, result["error"])
+        return _cad_error_response(result["error"])
 
     traits = result["traits"]
     detected_metal = result.get("detected_metal")

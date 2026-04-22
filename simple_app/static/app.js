@@ -26,6 +26,15 @@ const number = (value, unit = "") => `${new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2
 }).format(value || 0)}${unit}`;
 
+function errorMessage(data, response) {
+  const parts = [];
+  if (data.error) parts.push(data.error);
+  if (data.detail) parts.push(data.detail);
+  if (data.hint) parts.push(data.hint);
+  if (!parts.length) parts.push(`Analysis failed with status ${response.status}.`);
+  return parts.join(" ");
+}
+
 function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
 }
@@ -47,7 +56,9 @@ pickFile.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
   fileLabel.textContent = file ? file.name : "Upload CAD file";
-  statusEl.textContent = file ? `${file.name} selected. Run estimation when ready.` : "Upload CAD. Alloy will be detected automatically when metadata is available.";
+  statusEl.textContent = file
+    ? `${file.name} selected. Run estimation when ready.`
+    : "Upload CAD. Alloy will be detected automatically when metadata is available.";
 });
 
 form.addEventListener("submit", async (event) => {
@@ -64,7 +75,7 @@ form.addEventListener("submit", async (event) => {
       signal: controller.signal
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Analysis failed.");
+    if (!response.ok) throw new Error(errorMessage(data, response));
 
     const dims = data.geometry.dimensions_mm || {};
     const validation = data.geometry.validation || {};
@@ -73,7 +84,7 @@ form.addEventListener("submit", async (event) => {
     reportFile.textContent = data.file;
     reportEngine.textContent = `Geometry engine: ${data.engine}`;
     costTotal.textContent = money(data.cost.per_part_cost_inr);
-    costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} · ${data.cost.alloy_source} · ${number(data.cost.weight_g, " g")}`;
+    costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} - ${data.cost.alloy_source} - ${number(data.cost.weight_g, " g")}`;
     costRange.textContent = `${money(data.cost.range_inr.min)} - ${money(data.cost.range_inr.max)}`;
     costRangeNote.textContent = `Range includes ${data.cost.range_inr.percent}% metal and process variation.`;
 
@@ -81,9 +92,9 @@ form.addEventListener("submit", async (event) => {
       metric("Bounding box X", number(dims.x, " mm")),
       metric("Bounding box Y", number(dims.y, " mm")),
       metric("Bounding box Z", number(dims.z, " mm")),
-      metric("Volume", number(data.geometry.volume_mm3 / 1000, " cm³")),
-      metric("Surface area", number(data.geometry.surface_area_mm2 / 100, " cm²")),
-      metric("Projected area", number(data.geometry.projected_area_mm2, " mm²")),
+      metric("Volume", number(data.geometry.volume_mm3 / 1000, " cm3")),
+      metric("Surface area", number(data.geometry.surface_area_mm2 / 100, " cm2")),
+      metric("Projected area", number(data.geometry.projected_area_mm2, " mm2")),
       metric("Faces", number(topology.faces)),
       metric("Integrity score", number(validation.integrity_score, "/100"))
     ].join("");
