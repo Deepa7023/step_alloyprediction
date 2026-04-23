@@ -117,14 +117,18 @@ def analyze():
     port_cost_inr = _float_form("port_cost_inr", 0)
     port_cost_usd = port_cost_inr / INR_RATE
 
-    cost = calculate_hpdc_cost(
-        traits=traits,
-        metal=metal,
-        annual_volume=annual_volume,
-        sliders=sliders,
-        location_multiplier=1.0,
-        port_cost=port_cost_usd,
-    )
+    try:
+        cost = calculate_hpdc_cost(
+            traits=traits,
+            metal=metal,
+            annual_volume=annual_volume,
+            sliders=sliders,
+            location_multiplier=1.0,
+            port_cost=port_cost_usd,
+        )
+    except ValueError as exc:
+        logger.warning("Cost calculation failed for %s: %s", file.filename, exc)
+        return _cad_error_response(str(exc))
 
     breakdown_inr = cost.get("inr_breakdown") or {
         "Material": round(cost["material_cost"] * INR_RATE, 2),

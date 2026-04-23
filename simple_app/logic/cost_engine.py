@@ -36,7 +36,6 @@ QUOTE_CONSTANTS = {
     "die_life_shots": 150000.0,
     "base_projected_area_mm2": 37400.0,
     "base_machine_tonnage": 500.0,
-    "min_tooling_inr": 350000.0,
     "consumable_inr": 5.0,
     "melting_cost_inr_per_kg": 12.0,
     "shot_blast_inr_per_kg": 6.0,
@@ -66,22 +65,19 @@ def _row(row, section, label, value=0.0, unit="INR", note="", code=""):
 
 
 def _tooling_costs(projected_area, machine_tonnage, slider_count, weight_kg):
-    area_factor = max(0.45, math.sqrt(max(projected_area, 1.0) / QUOTE_CONSTANTS["base_projected_area_mm2"]))
-    tonnage_factor = max(0.75, math.sqrt(max(machine_tonnage, 1.0) / QUOTE_CONSTANTS["base_machine_tonnage"]))
+    area_factor = math.sqrt(max(projected_area, 1.0) / QUOTE_CONSTANTS["base_projected_area_mm2"])
+    tonnage_factor = math.sqrt(max(machine_tonnage, 1.0) / QUOTE_CONSTANTS["base_machine_tonnage"])
     slider_factor = 1 + (0.12 * max(0, slider_count))
-    weight_factor = max(0.85, min(1.35, 1 + math.log10(max(weight_kg * 1000, 1.0)) * 0.035))
+    weight_factor = 1 + math.log10(max(weight_kg * 1000, 1.0)) * 0.035
     complexity_factor = area_factor * tonnage_factor * slider_factor * weight_factor
 
-    hpdc_die = max(
-        QUOTE_CONSTANTS["min_tooling_inr"],
-        QUOTE_CONSTANTS["die_cost_inr"] * complexity_factor,
-    )
-    trimming_die = max(90000.0, hpdc_die * 0.18)
-    fixture = max(50000.0, hpdc_die * 0.08)
-    machining_tooling = max(60000.0, hpdc_die * 0.10)
-    gauges = max(40000.0, hpdc_die * 0.05)
-    compression_test = max(20000.0, hpdc_die * 0.025)
-    ct_scan = max(0.0, hpdc_die * 0.015 if projected_area > 25000 else 0.0)
+    hpdc_die = max(0.0, QUOTE_CONSTANTS["die_cost_inr"] * complexity_factor)
+    trimming_die = hpdc_die * 0.18
+    fixture = hpdc_die * 0.08
+    machining_tooling = hpdc_die * 0.10
+    gauges = hpdc_die * 0.05
+    compression_test = hpdc_die * 0.025
+    ct_scan = hpdc_die * 0.015 if projected_area > 25000 else 0.0
     total = hpdc_die + trimming_die + fixture + machining_tooling + gauges + compression_test + ct_scan
 
     return {
@@ -110,6 +106,13 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     port_cost = max(0.0, float(port_cost or 0.0))
     volume = traits.get('volume', 0)
     projected_area = traits.get('projected_area', 0)
+    dimensions = traits.get("dimensions") or {}
+    max_dimension = max([float(v or 0) for v in dimensions.values()] or [0])
+    if max_dimension > 5000 or projected_area > 5_000_000 or volume > 1_000_000_000:
+        raise ValueError(
+            "GEOMETRY_SCALE_ERROR: CAD dimensions are outside realistic part limits after unit normalization. "
+            "Please export the file in millimeters or upload a clean STL/STEP."
+        )
     
     market_price = live_price_per_kg if live_price_per_kg is not None else props['price_per_kg']
     

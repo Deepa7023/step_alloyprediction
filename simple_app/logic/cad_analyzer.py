@@ -55,6 +55,17 @@ def _analyze_step_lightweight(file_path):
     mins = arr.min(axis=0)
     maxs = arr.max(axis=0)
     extents = np.maximum(maxs - mins, 0.001)
+    max_extent = float(extents.max())
+    scale_note = "input coordinates treated as mm"
+    if max_extent > 100000:
+        extents = extents / 1000.0
+        scale_note = "input coordinates auto-scaled from micron-like units to mm"
+    elif max_extent > 5000:
+        extents = extents / 10.0
+        scale_note = "input coordinates auto-scaled from tenth-mm-like units to mm"
+    elif 0 < max_extent < 1:
+        extents = extents * 1000.0
+        scale_note = "input coordinates auto-scaled from meter-like units to mm"
     x, y, z = [round(float(value), 2) for value in extents]
 
     bbox_volume_mm3 = float(x * y * z)
@@ -76,7 +87,7 @@ def _analyze_step_lightweight(file_path):
         "validation": {
             "is_manifold": False,
             "integrity_score": 45,
-            "note": f"Render-safe STEP estimate from coordinate bounding box; fill_factor={fill_factor}",
+            "note": f"Render-safe STEP estimate from coordinate bounding box; fill_factor={fill_factor}; {scale_note}",
         },
     }
 
