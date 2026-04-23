@@ -127,6 +127,20 @@ QUOTE_CONSTANTS = {
     "freight_rate_inr_per_kg": 0.0,
     "metal_price_inr_per_kg": 212.80,
     "credit_cost_inr": 0.0,
+    "bop_percent": 1.2,
+    "job_work_base_inr": 0.0,
+    "xray_rate_inr_per_kg": 18.0,
+    "vmc_rate_inr_per_kg": 26.0,
+    "tool_maintenance_percent": 1.2,
+    "qa_rate_inr_per_kg": 6.0,
+    "compression_test_rate_inr_per_kg": 4.0,
+    "icc_percent": 0.35,
+    "insurance_percent": 0.50,
+    "acd_backup_percent": 0.30,
+    "licence_cost_percent": 0.15,
+    "rejection_percent": 0.0,
+    "yoy_reduction_percent": 0.75,
+    "packing_rate_inr_per_kg": 4.5,
 }
 
 TOOLING_ROWS_58_60 = [
@@ -421,6 +435,79 @@ def _tooling_costs(projected_area, machine_tonnage, slider_count, metal, geometr
     }
 
 
+def _secondary_process_costs(weight_kg, costing_weight_kg, geometry, complexity, topology, slider_count):
+    trim_factor = _clamp(
+        0.55
+        + max(complexity["fine_feature_factor"] - 1.0, 0.0) * 0.9
+        + slider_count * 0.10,
+        0.55,
+        1.55,
+    )
+    trimming_inr = weight_kg * 22.0 * trim_factor
+
+    xray_inr = 0.0
+    if complexity["quality_risk_factor"] > 1.10 or topology["integrity_score"] < 78:
+        xray_inr = weight_kg * QUOTE_CONSTANTS["xray_rate_inr_per_kg"] * _clamp(complexity["quality_risk_factor"], 1.0, 1.35)
+
+    vmc_inr = 0.0
+    if geometry["true_surface_factor"] > 1.75 or topology["faces"] > 180:
+        vmc_inr = weight_kg * QUOTE_CONSTANTS["vmc_rate_inr_per_kg"] * _clamp(complexity["fine_feature_factor"], 1.0, 1.4)
+
+    qa_inr = costing_weight_kg * QUOTE_CONSTANTS["qa_rate_inr_per_kg"] * _clamp(
+        0.9 + max(complexity["quality_risk_factor"] - 1.0, 0.0) * 1.2,
+        0.9,
+        1.35,
+    )
+    compression_test_inr = 0.0
+    if topology["integrity_score"] < 90 or geometry["projected_area"] > 18_000:
+        compression_test_inr = costing_weight_kg * QUOTE_CONSTANTS["compression_test_rate_inr_per_kg"]
+
+    return {
+        "trimming_inr": trimming_inr,
+        "xray_inr": xray_inr,
+        "vmc_inr": vmc_inr,
+        "qa_inr": qa_inr,
+        "compression_test_inr": compression_test_inr,
+    }
+
+
+def _other_costs(raw_total_inr, conv_total_before_others, die_amort_inr, weight_kg, costing_weight_kg, complexity, topology):
+    bop_inr = raw_total_inr * QUOTE_CONSTANTS["bop_percent"] / 100.0
+    job_work_inr = QUOTE_CONSTANTS["job_work_base_inr"]
+
+    base_for_others = raw_total_inr + conv_total_before_others + die_amort_inr
+    icc_inr = base_for_others * QUOTE_CONSTANTS["icc_percent"] / 100.0
+    credit_inr = base_for_others * QUOTE_CONSTANTS["credit_cost_inr"] / 100.0 if QUOTE_CONSTANTS["credit_cost_inr"] else 0.0
+    insurance_inr = base_for_others * QUOTE_CONSTANTS["insurance_percent"] / 100.0
+    acd_backup_inr = base_for_others * QUOTE_CONSTANTS["acd_backup_percent"] / 100.0
+    licence_inr = base_for_others * QUOTE_CONSTANTS["licence_cost_percent"] / 100.0
+
+    rejection_percent = _clamp(
+        1.2
+        + max(complexity["quality_risk_factor"] - 1.0, 0.0) * 6.0
+        + max(80.0 - topology["integrity_score"], 0.0) * 0.06,
+        1.0,
+        5.5,
+    )
+    rejection_inr = conv_total_before_others * rejection_percent / 100.0
+    yoy_reduction_inr = -(base_for_others * QUOTE_CONSTANTS["yoy_reduction_percent"] / 100.0)
+    packing_inr = costing_weight_kg * QUOTE_CONSTANTS["packing_rate_inr_per_kg"] * _clamp(0.9 + weight_kg * 0.08, 0.9, 1.35)
+
+    return {
+        "bop_inr": bop_inr,
+        "job_work_inr": job_work_inr,
+        "icc_inr": icc_inr,
+        "credit_inr": credit_inr,
+        "insurance_inr": insurance_inr,
+        "acd_backup_inr": acd_backup_inr,
+        "licence_inr": licence_inr,
+        "rejection_inr": rejection_inr,
+        "rejection_percent": rejection_percent,
+        "yoy_reduction_inr": yoy_reduction_inr,
+        "packing_inr": packing_inr,
+    }
+
+
 def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multiplier=1.0, port_cost=0.0):
     if metal not in METAL_PROPERTIES:
         metal = "Aluminum_A380"
@@ -476,6 +563,7 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     fettling_inr = (fettling_minutes / 60.0) * QUOTE_CONSTANTS["manual_labour_inr_per_hour"]
     shot_blast_inr = costing_weight_kg * QUOTE_CONSTANTS["shot_blast_inr_per_kg"] * _clamp(0.9 + geometry["true_surface_factor"] * 0.12, 0.9, 1.5)
     cleaning_inr = QUOTE_CONSTANTS["cleaning_washing_inr"] * _clamp(0.9 + max(complexity["quality_risk_factor"] - 1.0, 0.0) * 1.4, 0.9, 1.35)
+    secondary = _secondary_process_costs(weight_kg, costing_weight_kg, geometry, complexity, topology, slider_count)
 
     tooling = _tooling_costs(
         geometry["projected_area"] * machine["thin_wall_factor"],
@@ -489,16 +577,42 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     die_life = tooling["die_life_shots"]
     amortization_qty = max(min(die_life, production_qty * PROGRAM_LIFE_YEARS), production_qty, 1)
     die_amort_inr = tooling["total"] / amortization_qty
+    tool_maintenance_inr = tooling["total"] * QUOTE_CONSTANTS["tool_maintenance_percent"] / 100.0 / max(amortization_qty, 1)
 
     freight_inr = costing_weight_kg * QUOTE_CONSTANTS["freight_rate_inr_per_kg"]
     port_cost_inr = port_cost * INR_RATE
-    credit_inr = QUOTE_CONSTANTS["credit_cost_inr"]
 
-    raw_total_inr = material_cost_inr
-    conv_total_inr = machine_cost_inr + consumable_inr + melting_cost_inr + fettling_inr + shot_blast_inr + cleaning_inr
-    others_inr = credit_inr
+    bop_inr = material_cost_inr * QUOTE_CONSTANTS["bop_percent"] / 100.0
+    job_work_inr = QUOTE_CONSTANTS["job_work_base_inr"]
+    raw_total_inr = material_cost_inr + bop_inr + job_work_inr
 
-    subtotal_inr = raw_total_inr + conv_total_inr + others_inr + die_amort_inr + freight_inr + port_cost_inr
+    conv_total_inr = (
+        machine_cost_inr
+        + consumable_inr
+        + melting_cost_inr
+        + secondary["trimming_inr"]
+        + fettling_inr
+        + shot_blast_inr
+        + secondary["xray_inr"]
+        + secondary["vmc_inr"]
+        + cleaning_inr
+        + tool_maintenance_inr
+        + secondary["qa_inr"]
+        + secondary["compression_test_inr"]
+    )
+    other_costs = _other_costs(raw_total_inr, conv_total_inr, die_amort_inr, weight_kg, costing_weight_kg, complexity, topology)
+    others_inr = (
+        other_costs["icc_inr"]
+        + other_costs["credit_inr"]
+        + other_costs["insurance_inr"]
+        + other_costs["acd_backup_inr"]
+        + other_costs["licence_inr"]
+        + other_costs["rejection_inr"]
+        + other_costs["yoy_reduction_inr"]
+    )
+
+    subtotal_inr = raw_total_inr + conv_total_inr + others_inr + other_costs["packing_inr"] + die_amort_inr + freight_inr + port_cost_inr
+    over_heads_inr = subtotal_inr * (QUOTE_CONSTANTS["rnd_percent"] + QUOTE_CONSTANTS["sa_percent"]) / 100.0
     rnd_inr = subtotal_inr * QUOTE_CONSTANTS["rnd_percent"] / 100.0
     sa_inr = subtotal_inr * QUOTE_CONSTANTS["sa_percent"] / 100.0
     ebit_inr = subtotal_inr * QUOTE_CONSTANTS["ebit_percent"] / 100.0
@@ -516,43 +630,43 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         _row(11, "Raw material", "Costing Weight incl. Melt Loss", costing_weight_kg, "kg", f"{round(losses['melting_loss_percent'], 2)}%"),
         _row(12, "Raw material", "Alloy Price/kg", alloy_price_inr, "INR/kg"),
         _row(13, "Raw material", "Cost of Raw Materials", raw_total_inr, "INR"),
-        _row(14, "Raw material", "Alloy Cost", raw_total_inr, "INR"),
-        _row(15, "Raw material", "BOP", 0, "INR"),
-        _row(16, "Raw material", "Job Work", 0, "INR"),
+        _row(14, "Raw material", "Alloy Cost", material_cost_inr, "INR"),
+        _row(15, "Raw material", "BOP", bop_inr, "INR"),
+        _row(16, "Raw material", "Job Work", job_work_inr, "INR"),
         _row(17, "Raw material", "Total", raw_total_inr, "INR", code="A"),
         _row(19, "Conversion", "PDC Machine", machine_cost_inr, "INR"),
         _row(20, "Conversion", "Consumable", consumable_inr, "INR"),
         _row(21, "Conversion", "Melting Cost", melting_cost_inr, "INR"),
-        _row(22, "Conversion", "Trimming", 0, "INR"),
+        _row(22, "Conversion", "Trimming", secondary["trimming_inr"], "INR"),
         _row(23, "Conversion", "Fettling", fettling_inr, "INR", f"{round(fettling_minutes, 2)} min / part"),
         _row(24, "Conversion", "Shot Blast", shot_blast_inr, "INR"),
-        _row(25, "Conversion", "Xray", 0, "INR"),
-        _row(26, "Conversion", "VMC", 0, "INR"),
+        _row(25, "Conversion", "Xray", secondary["xray_inr"], "INR"),
+        _row(26, "Conversion", "VMC", secondary["vmc_inr"], "INR"),
         _row(27, "Conversion", "Cleaning/Washing", cleaning_inr, "INR"),
-        _row(28, "Conversion", "Tool Maint.", 0, "INR"),
-        _row(29, "Conversion", "Sp Hand QA", 0, "INR"),
-        _row(30, "Conversion", "Compression Test", 0, "INR"),
+        _row(28, "Conversion", "Tool Maint.", tool_maintenance_inr, "INR"),
+        _row(29, "Conversion", "Sp Hand QA", secondary["qa_inr"], "INR"),
+        _row(30, "Conversion", "Compression Test", secondary["compression_test_inr"], "INR"),
         _row(31, "Conversion", "Total", conv_total_inr, "INR", code="B"),
-        _row(33, "Others", "ICC", 0, "INR"),
-        _row(34, "Others", "Credit Costs", credit_inr, "INR", "12%"),
-        _row(35, "Others", "Insurance", 0, "INR", "0.50%"),
-        _row(36, "Others", "ACD Backup", 0, "INR"),
-        _row(37, "Others", "Licence Cost", 0, "INR"),
-        _row(38, "Others", "Rejection", 0, "INR", "5%"),
-        _row(39, "Others", "YOY Reduction", 0, "INR"),
+        _row(33, "Others", "ICC", other_costs["icc_inr"], "INR"),
+        _row(34, "Others", "Credit Costs", other_costs["credit_inr"], "INR"),
+        _row(35, "Others", "Insurance", other_costs["insurance_inr"], "INR", "0.50%"),
+        _row(36, "Others", "ACD Backup", other_costs["acd_backup_inr"], "INR"),
+        _row(37, "Others", "Licence Cost", other_costs["licence_inr"], "INR"),
+        _row(38, "Others", "Rejection", other_costs["rejection_inr"], "INR", f"{round(other_costs['rejection_percent'], 2)}%"),
+        _row(39, "Others", "YOY Reduction", other_costs["yoy_reduction_inr"], "INR"),
         _row(40, "Others", "Total", others_inr, "INR", code="C"),
-        _row(41, "Packing/Margins", "Packing", 0, "INR", code="D"),
-        _row(42, "Packing/Margins", "Over Heads (R&D+S&A)", rnd_inr + sa_inr, "INR", f"{QUOTE_CONSTANTS['rnd_percent'] + QUOTE_CONSTANTS['sa_percent']}%", code="E"),
+        _row(41, "Packing/Margins", "Packing", other_costs["packing_inr"], "INR", code="D"),
+        _row(42, "Packing/Margins", "Over Heads (R&D+S&A)", over_heads_inr, "INR", f"{QUOTE_CONSTANTS['rnd_percent'] + QUOTE_CONSTANTS['sa_percent']}%", code="E"),
         _row(43, "Packing/Margins", "Profit (EBIT)", ebit_inr, "INR", f"{QUOTE_CONSTANTS['ebit_percent']}%", code="F"),
         _row(44, "Packing/Margins", "Freight (DAP VC Noida)", freight_inr, "INR", code="G"),
         _row(46, "Summary", "Cost of Raw Material", raw_total_inr, "INR", code="A"),
         _row(47, "Summary", "Conversion Cost", conv_total_inr, "INR", code="B"),
         _row(48, "Summary", "Others", others_inr, "INR", code="C"),
-        _row(49, "Summary", "Packing", 0, "INR", code="D"),
-        _row(50, "Summary", "Overheads", rnd_inr + sa_inr, "INR", code="E"),
+        _row(49, "Summary", "Packing", other_costs["packing_inr"], "INR", code="D"),
+        _row(50, "Summary", "Overheads", over_heads_inr, "INR", code="E"),
         _row(51, "Summary", "Profit", ebit_inr, "INR", code="F"),
         _row(52, "Summary", "Freight", freight_inr, "INR", code="G"),
-        _row(55, "Summary", "Tool Amortization / part", die_amort_inr, "INR"),
+        _row(55, "Summary", "Repeat Tool Amortization Cost", die_amort_inr, "INR"),
         _row(56, "Summary", "Final Cost incl. Tooling", total_inr, "INR"),
         _row(58, "Tooling", "HPDC Die cost", tooling["hpdc_die"], "INR", "1 set"),
         _row(59, "Tooling", "Trimming Die cost", tooling["trimming_die"], "INR", "1 set"),
@@ -605,9 +719,17 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
             "Machine energy / PDC": round(machine_cost_inr, 2),
             "Consumable": round(consumable_inr, 2),
             "Melting cost": round(melting_cost_inr, 2),
+            "Trimming": round(secondary["trimming_inr"], 2),
             "Fettling": round(fettling_inr, 2),
             "Shot blast": round(shot_blast_inr, 2),
+            "Xray": round(secondary["xray_inr"], 2),
+            "VMC": round(secondary["vmc_inr"], 2),
             "Cleaning / washing": round(cleaning_inr, 2),
+            "Tool maintenance": round(tool_maintenance_inr, 2),
+            "QA inspection": round(secondary["qa_inr"], 2),
+            "Compression test": round(secondary["compression_test_inr"], 2),
+            "Packing": round(other_costs["packing_inr"], 2),
+            "Others": round(others_inr, 2),
             "Die amortization": round(die_amort_inr, 2),
             "Freight": round(freight_inr, 2),
             "Port / handling": round(port_cost_inr, 2),
