@@ -314,12 +314,7 @@ def _loss_model(geometry, topology, props, slider_count):
     )
     scrap_percent = _clamp(scrap_percent, 1.5, 9.0)
 
-    melting_loss_percent = (
-        QUOTE_CONSTANTS["base_melting_process_loss_percent"]
-        + max(props["tool_wear_factor"] - 1.0, 0.0) * 2.0
-        + max(geometry["volume"] / 1_000_000.0 - 0.15, 0.0) * 0.8
-    )
-    melting_loss_percent = _clamp(melting_loss_percent, 4.0, 10.5)
+    melting_loss_percent = QUOTE_CONSTANTS["base_melting_process_loss_percent"]
 
     return {
         "runner_percent": runner_percent,
@@ -561,7 +556,7 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         2.1,
     )
     fettling_inr = (fettling_minutes / 60.0) * QUOTE_CONSTANTS["manual_labour_inr_per_hour"]
-    shot_blast_inr = costing_weight_kg * QUOTE_CONSTANTS["shot_blast_inr_per_kg"] * _clamp(0.9 + geometry["true_surface_factor"] * 0.12, 0.9, 1.5)
+    shot_blast_inr = costing_weight_kg * QUOTE_CONSTANTS["shot_blast_inr_per_kg"]
     cleaning_inr = QUOTE_CONSTANTS["cleaning_washing_inr"] * _clamp(0.9 + max(complexity["quality_risk_factor"] - 1.0, 0.0) * 1.4, 0.9, 1.35)
     secondary = _secondary_process_costs(weight_kg, costing_weight_kg, geometry, complexity, topology, slider_count)
 
