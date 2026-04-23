@@ -117,7 +117,8 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     market_price = live_price_per_kg if live_price_per_kg is not None else props['price_per_kg']
     
     # 1. Material Cost (Render-light spreadsheet model)
-    weight = volume * props['density'] # grams
+    weight_override = traits.get("casting_weight_g_override")
+    weight = float(weight_override) if weight_override else volume * props['density'] # grams
     weight_kg = weight / 1000
 
     yield_factor = 1 / (

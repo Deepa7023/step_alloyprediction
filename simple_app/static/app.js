@@ -11,6 +11,7 @@ const results = document.querySelector("#results");
 const geometryGrid = document.querySelector("#geometryGrid");
 const costTotal = document.querySelector("#costTotal");
 const costAlloy = document.querySelector("#costAlloy");
+const heroCastingWeight = document.querySelector("#heroCastingWeight");
 const costBreakdown = document.querySelector("#costBreakdown");
 
 const money = (value) => new Intl.NumberFormat("en-IN", {
@@ -81,7 +82,8 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(errorMessage(data, response));
 
     costTotal.textContent = money(data.cost.per_part_cost_inr);
-    costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} - ${data.cost.alloy_source} - ${number(data.cost.weight_g, " g")}`;
+    costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} - ${data.cost.alloy_source}`;
+    heroCastingWeight.textContent = number(data.cost.weight_g, " g");
 
     geometryGrid.innerHTML = [
       metric("Surface area", number(data.geometry.surface_area_mm2 / 100, " cm2")),

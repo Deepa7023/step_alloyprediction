@@ -116,6 +116,10 @@ def analyze():
     traits = result["traits"]
     detected_metal = result.get("detected_metal")
     metal, alloy_source = _detect_alloy_hint(file_path, file.filename, detected_metal)
+    casting_weight_g = _float_form("casting_weight_g", 0)
+    if casting_weight_g > 0:
+        traits = dict(traits)
+        traits["casting_weight_g_override"] = casting_weight_g
     annual_volume = _int_form("annual_volume", 10000)
     sliders = _int_form("sliders", 0)
     port_cost_inr = _float_form("port_cost_inr", 0)
