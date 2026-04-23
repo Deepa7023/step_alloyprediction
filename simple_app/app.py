@@ -156,6 +156,7 @@ def analyze():
             "yield_factor": cost.get("yield_factor"),
             "tooling_estimate_inr": cost.get("tooling_estimate_inr", round(cost["tooling_estimate"] * INR_RATE, 2)),
             "tooling_rows_58_60": cost.get("tooling_rows_58_60", []),
+            "quote_sheet_rows": cost.get("quote_sheet_rows", []),
             "spreadsheet_constants": cost.get("spreadsheet_constants", {}),
             "breakdown_inr": breakdown_inr,
             "per_part_cost_inr": round(cost["total_unit_cost"] * INR_RATE, 2),

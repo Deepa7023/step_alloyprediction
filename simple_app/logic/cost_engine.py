@@ -49,6 +49,18 @@ TOOLING_ROWS_58_60 = [
     {"row": 60, "label": "Fixture Cost", "quantity": 2, "unit": "set"},
 ]
 
+
+def _row(row, section, label, value=0.0, unit="INR", note="", code=""):
+    return {
+        "row": row,
+        "section": section,
+        "label": label,
+        "code": code,
+        "value": round(float(value or 0), 2),
+        "unit": unit,
+        "note": note,
+    }
+
 def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multiplier=1.0, live_price_per_kg=None, port_cost=0.0):
     """
     Calculates HPDC cost based on part traits and user parameters.
@@ -130,10 +142,69 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     sa_inr = subtotal_before_margins_inr * QUOTE_CONSTANTS["sa_percent"] / 100
     ebit_inr = subtotal_before_margins_inr * QUOTE_CONSTANTS["ebit_percent"] / 100
     total_unit_cost_inr = subtotal_before_margins_inr + rnd_inr + sa_inr + ebit_inr
+    final_cost_before_tool_amort_inr = total_unit_cost_inr - die_amortization_inr
     total_unit_cost = total_unit_cost_inr / 83.5
     tooling_cost_total = QUOTE_CONSTANTS["die_cost_inr"] / 83.5
     amortization_cost = die_amortization_inr / 83.5
     material_cost = material_cost_inr / 83.5
+    quote_sheet_rows = [
+        _row(4, "Part", "PART NAME", 0, "", "Uploaded CAD file"),
+        _row(5, "Part", "PDC M/C Tonnage", machine_tonnage, "T"),
+        _row(6, "Part", "Cavity", 1, "nos"),
+        _row(8, "Raw material", "Volume", volume, "mm3"),
+        _row(8, "Raw material", "Projected area", projected_area, "mm2", code="P.A."),
+        _row(9, "Raw material", "EX. Rate", 83.5, "INR/USD"),
+        _row(10, "Raw material", "Casting Weight", weight_kg, "kg"),
+        _row(11, "Raw material", "Gross Weight including Burning Loss", costing_weight_kg, "kg", f"{QUOTE_CONSTANTS['melting_process_loss_percent']}%"),
+        _row(12, "Raw material", "Alloy Price/kg", QUOTE_CONSTANTS["metal_price_inr_per_kg"], "INR/kg"),
+        _row(13, "Raw material", "Cost of Raw Materials", raw_material_total_inr, "INR"),
+        _row(14, "Raw material", "Alloy Cost", raw_material_total_inr, "INR"),
+        _row(15, "Raw material", "BOP", 0, "INR"),
+        _row(16, "Raw material", "Job Work", 0, "INR"),
+        _row(17, "Raw material", "Total", raw_material_total_inr, "INR", code="A"),
+        _row(19, "Conversion", "PDC", machine_cost_inr, "INR"),
+        _row(20, "Conversion", "Consumable", consumable_inr, "INR"),
+        _row(21, "Conversion", "Melting Cost", melting_cost_inr, "INR"),
+        _row(22, "Conversion", "Trimming", 0, "INR"),
+        _row(23, "Conversion", "Fettling", fettling_inr, "INR", f"{QUOTE_CONSTANTS['fettling_time_minutes']} min / 60 x labour rate"),
+        _row(24, "Conversion", "Shot Blast (Hanger Type)", shot_blast_inr, "INR"),
+        _row(25, "Conversion", "Xray", 0, "INR"),
+        _row(26, "Conversion", "VMC", 0, "INR"),
+        _row(27, "Conversion", "Cleaning/Washing", cleaning_inr, "INR"),
+        _row(28, "Conversion", "Tool Maint.", 0, "INR"),
+        _row(29, "Conversion", "Sp Hand Qa (Inspection)", 0, "INR"),
+        _row(30, "Conversion", "Compression Test", 0, "INR"),
+        _row(31, "Conversion", "Total", conversion_total_inr, "INR", code="B"),
+        _row(33, "Others", "ICC", 0, "INR"),
+        _row(34, "Others", "Credit Costs", 75, "INR", "12%"),
+        _row(35, "Others", "Insurance", 0, "INR", "0.50%"),
+        _row(36, "Others", "ACD Backup", 0, "INR"),
+        _row(37, "Others", "Licence Cost", 0, "INR"),
+        _row(38, "Others", "Rejection", 0, "INR", "5%"),
+        _row(39, "Others", "YOY Reduction", 0, "INR"),
+        _row(40, "Others", "Total", 75, "INR", code="C"),
+        _row(41, "Packing / Margins", "Packing", 0, "INR", code="D"),
+        _row(42, "Packing / Margins", "Over Heads", 0, "INR", "12%", code="E"),
+        _row(43, "Packing / Margins", "Profit", ebit_inr, "INR", "8%", code="F"),
+        _row(44, "Packing / Margins", "Freight Cost (DAP VC Noida)", freight_inr, "INR", code="G"),
+        _row(46, "Summary", "Cost of Raw Material", raw_material_total_inr, "INR", code="A"),
+        _row(47, "Summary", "Conversion Cost", conversion_total_inr, "INR", code="B"),
+        _row(48, "Summary", "Others", 75, "INR", code="C"),
+        _row(49, "Summary", "Packing", 0, "INR", code="D"),
+        _row(50, "Summary", "Overheads", rnd_inr + sa_inr, "INR", code="E"),
+        _row(51, "Summary", "Profit", ebit_inr, "INR", code="F"),
+        _row(52, "Summary", "Freight Cost (DAP VC Noida)", freight_inr, "INR", code="G"),
+        _row(55, "Summary", "Repeat Tool Amortization Cost", die_amortization_inr, "INR"),
+        _row(56, "Summary", "Final Cost including tool amort. Cost", total_unit_cost_inr, "INR"),
+        _row(58, "Tooling", "HPDC Die cost", 1, "set"),
+        _row(59, "Tooling", "Trimming Die cost", 1, "set"),
+        _row(60, "Tooling", "Fixture Cost", 2, "set"),
+        _row(61, "Tooling", "Machining Tooling cost", 1, "set"),
+        _row(62, "Tooling", "Gauges Cost", 2, "set"),
+        _row(63, "Tooling", "Compression Test", 1, "set"),
+        _row(64, "Tooling", "CT Scan Cost (One Time)", 0, "As applicable"),
+        _row(65, "Tooling", "TOTAL Tooling Cost INR", QUOTE_CONSTANTS["die_cost_inr"], "INR"),
+    ]
     
     # 6. Fluctuation Range driven by metal volatility and process variation.
     range_pct = max(0.04, props.get("volatility", 0.05))
@@ -156,6 +227,7 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         "quote_basis": "Render-light spreadsheet costing",
         "spreadsheet_constants": QUOTE_CONSTANTS,
         "tooling_rows_58_60": TOOLING_ROWS_58_60,
+        "quote_sheet_rows": quote_sheet_rows,
         "tooling_estimate_inr": round(QUOTE_CONSTANTS["die_cost_inr"], 2),
         "costing_weight_kg": round(costing_weight_kg, 4),
         "gross_melt_kg": round(gross_melt_kg, 4),
@@ -174,6 +246,7 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
             "R&D": round(rnd_inr, 2),
             "S&A": round(sa_inr, 2),
             "EBIT": round(ebit_inr, 2),
+            "Final before tool amortization": round(final_cost_before_tool_amort_inr, 2),
         },
         "fluctuation_range": fluctuation_range,
         "machine_details": {

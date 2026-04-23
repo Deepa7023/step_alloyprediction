@@ -39,6 +39,39 @@ function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
+function sheetRow(row) {
+  const value = Number(row.value || 0);
+  const isMoney = row.unit === "INR" || row.unit === "INR/kg" || row.unit === "INR/USD";
+  const displayValue = row.unit === "set"
+    ? `${value || row.quantity || 0} set`
+    : isMoney
+      ? money(value)
+      : `${number(value)}${row.unit ? ` ${row.unit}` : ""}`;
+  return `
+    <div class="sheet-row">
+      <span class="sheet-row-no">${row.row}</span>
+      <span class="sheet-label">${row.label}</span>
+      <span class="sheet-note">${row.note || row.code || ""}</span>
+      <strong>${displayValue}</strong>
+    </div>
+  `;
+}
+
+function sheetSections(rows) {
+  const grouped = rows.reduce((acc, row) => {
+    acc[row.section] = acc[row.section] || [];
+    acc[row.section].push(row);
+    return acc;
+  }, {});
+
+  return Object.entries(grouped).map(([section, items]) => `
+    <section class="sheet-section">
+      <h3>${section}</h3>
+      ${items.map(sheetRow).join("")}
+    </section>
+  `).join("");
+}
+
 function showProcessing() {
   emptyState.classList.add("hidden");
   results.classList.add("hidden");
@@ -95,7 +128,7 @@ form.addEventListener("submit", async (event) => {
           <span>${label}</span>
           <strong>${money(value)}</strong>
         </div>
-      `).join("");
+      `).join("") + sheetSections(data.cost.quote_sheet_rows || []);
 
     const constants = data.cost.spreadsheet_constants || {};
     costMeta.innerHTML = [
