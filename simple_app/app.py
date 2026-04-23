@@ -126,14 +126,11 @@ def analyze():
         port_cost=port_cost_usd,
     )
 
-    breakdown_usd = {
-        "Material": cost["material_cost"],
-        "Machine conversion": cost["machine_cost"],
-        "Tooling amortization": cost["amortization"],
-        "Port / handling": cost["port_cost"],
-    }
-    breakdown_inr = {
-        label: round(value * INR_RATE, 2) for label, value in breakdown_usd.items()
+    breakdown_inr = cost.get("inr_breakdown") or {
+        "Material": round(cost["material_cost"] * INR_RATE, 2),
+        "Machine conversion": round(cost["machine_cost"] * INR_RATE, 2),
+        "Tooling amortization": round(cost["amortization"] * INR_RATE, 2),
+        "Port / handling": round(cost["port_cost"] * INR_RATE, 2),
     }
 
     response = {
@@ -152,8 +149,14 @@ def analyze():
             "alloy_source": alloy_source,
             "detected_alloy": metal if alloy_source != "Default fallback" else None,
             "annual_volume": cost["annual_volume"],
+            "quote_basis": cost.get("quote_basis", "Reference model"),
             "weight_g": cost["weight_g"],
-            "tooling_estimate_inr": round(cost["tooling_estimate"] * INR_RATE, 2),
+            "costing_weight_kg": cost.get("costing_weight_kg"),
+            "gross_melt_kg": cost.get("gross_melt_kg"),
+            "yield_factor": cost.get("yield_factor"),
+            "tooling_estimate_inr": cost.get("tooling_estimate_inr", round(cost["tooling_estimate"] * INR_RATE, 2)),
+            "tooling_rows_58_60": cost.get("tooling_rows_58_60", []),
+            "spreadsheet_constants": cost.get("spreadsheet_constants", {}),
             "breakdown_inr": breakdown_inr,
             "per_part_cost_inr": round(cost["total_unit_cost"] * INR_RATE, 2),
             "range_inr": {

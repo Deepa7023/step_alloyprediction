@@ -24,6 +24,31 @@ MACHINE_RATES = [
     {"limit": 4000, "rate": 600}
 ]
 
+QUOTE_CONSTANTS = {
+    "runner_overflow_percent": 8.0,
+    "scrap_percent": 3.0,
+    "melting_process_loss_percent": 6.0,
+    "metal_price_inr_per_kg": 212.80,
+    "rnd_percent": 4.0,
+    "sa_percent": 6.1,
+    "ebit_percent": 10.0,
+    "die_cost_inr": 1200000.0,
+    "die_life_shots": 150000.0,
+    "consumable_inr": 5.0,
+    "melting_cost_inr_per_kg": 12.0,
+    "shot_blast_inr_per_kg": 6.0,
+    "cleaning_washing_inr": 4.0,
+    "labour_rate_inr_per_hour": 60.0,
+    "fettling_time_minutes": 5.0,
+    "freight_rate_inr_per_kg": 0.0,
+}
+
+TOOLING_ROWS_58_60 = [
+    {"row": 58, "label": "HPDC Die cost", "quantity": 1, "unit": "set"},
+    {"row": 59, "label": "Trimming Die cost", "quantity": 1, "unit": "set"},
+    {"row": 60, "label": "Fixture Cost", "quantity": 2, "unit": "set"},
+]
+
 def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multiplier=1.0, live_price_per_kg=None, port_cost=0.0):
     """
     Calculates HPDC cost based on part traits and user parameters.
@@ -40,18 +65,19 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     
     market_price = live_price_per_kg if live_price_per_kg is not None else props['price_per_kg']
     
-    # 1. Material Cost (Refined Foundry Model)
+    # 1. Material Cost (Render-light spreadsheet model)
     weight = volume * props['density'] # grams
     weight_kg = weight / 1000
-    
-    SHOT_WEIGHT_MULTIPLIER = 1.50 # Incl. runners/overflows
-    MELTING_LOSS_FACTOR = 1.05 # 5% oxidation/loss
-    SCRAP_RECOVERY_VALUE = 0.40 # 40% of virgin price recovered
-    
-    shot_weight_kg = weight_kg * SHOT_WEIGHT_MULTIPLIER
-    material_input_cost = shot_weight_kg * market_price * MELTING_LOSS_FACTOR
-    scrap_credit = (shot_weight_kg - weight_kg) * market_price * SCRAP_RECOVERY_VALUE
-    material_cost = material_input_cost - scrap_credit
+
+    yield_factor = 1 / (
+        1 - (
+            QUOTE_CONSTANTS["runner_overflow_percent"] +
+            QUOTE_CONSTANTS["scrap_percent"]
+        ) / 100
+    )
+    gross_melt_kg = weight_kg * yield_factor
+    costing_weight_kg = gross_melt_kg * (1 + QUOTE_CONSTANTS["melting_process_loss_percent"] / 100)
+    material_cost_inr = costing_weight_kg * QUOTE_CONSTANTS["metal_price_inr_per_kg"]
     
     # 2. Machine Tonnage (Clamping Force)
     force_kn = projected_area * props.get('injection_pressure', 80) / 1000
@@ -77,15 +103,37 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     
     conversion_hourly_rate = (machine_rate * location_multiplier) + 55.0 
     machine_cost_per_part = conversion_hourly_rate / shots_per_hour
+    machine_cost_inr = machine_cost_per_part * 83.5
     
-    # 4. Tooling Cost & Amortization (Diamorization)
-    base_tooling = 18000 + (max(0, machine_tonnage - 250) * 25)
-    tooling_cost_total = base_tooling + (slider_count * 6500)
-    amortization_cost = tooling_cost_total / production_qty
-    
-    # 5. Total Part Cost
-    # Including HDPC Port Cost provided by user
-    total_unit_cost = material_cost + machine_cost_per_part + amortization_cost + port_cost
+    # 4. Conversion and die amortization from the supplied costing sheet.
+    consumable_inr = QUOTE_CONSTANTS["consumable_inr"]
+    melting_cost_inr = costing_weight_kg * QUOTE_CONSTANTS["melting_cost_inr_per_kg"]
+    fettling_inr = (
+        QUOTE_CONSTANTS["fettling_time_minutes"] / 60
+    ) * QUOTE_CONSTANTS["labour_rate_inr_per_hour"]
+    shot_blast_inr = costing_weight_kg * QUOTE_CONSTANTS["shot_blast_inr_per_kg"]
+    cleaning_inr = QUOTE_CONSTANTS["cleaning_washing_inr"]
+    die_amortization_inr = QUOTE_CONSTANTS["die_cost_inr"] / QUOTE_CONSTANTS["die_life_shots"]
+    freight_inr = costing_weight_kg * QUOTE_CONSTANTS["freight_rate_inr_per_kg"]
+    port_cost_inr = port_cost * 83.5
+
+    raw_material_total_inr = material_cost_inr
+    conversion_total_inr = (
+        machine_cost_inr + consumable_inr + melting_cost_inr +
+        fettling_inr + shot_blast_inr + cleaning_inr
+    )
+    subtotal_before_margins_inr = (
+        raw_material_total_inr + conversion_total_inr +
+        die_amortization_inr + freight_inr + port_cost_inr
+    )
+    rnd_inr = subtotal_before_margins_inr * QUOTE_CONSTANTS["rnd_percent"] / 100
+    sa_inr = subtotal_before_margins_inr * QUOTE_CONSTANTS["sa_percent"] / 100
+    ebit_inr = subtotal_before_margins_inr * QUOTE_CONSTANTS["ebit_percent"] / 100
+    total_unit_cost_inr = subtotal_before_margins_inr + rnd_inr + sa_inr + ebit_inr
+    total_unit_cost = total_unit_cost_inr / 83.5
+    tooling_cost_total = QUOTE_CONSTANTS["die_cost_inr"] / 83.5
+    amortization_cost = die_amortization_inr / 83.5
+    material_cost = material_cost_inr / 83.5
     
     # 6. Fluctuation Range driven by metal volatility and process variation.
     range_pct = max(0.04, props.get("volatility", 0.05))
@@ -97,7 +145,7 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     
     return {
         "material_cost": round(material_cost, 2),
-        "machine_cost": round(machine_cost_per_part, 2),
+        "machine_cost": round(machine_cost_inr / 83.5, 2),
         "amortization": round(amortization_cost, 2),
         "port_cost": round(port_cost, 2),
         "total_unit_cost": round(total_unit_cost, 2),
@@ -105,6 +153,28 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         "annual_volume": production_qty,
         "alloy": metal,
         "market_price": round(market_price, 2),
+        "quote_basis": "Render-light spreadsheet costing",
+        "spreadsheet_constants": QUOTE_CONSTANTS,
+        "tooling_rows_58_60": TOOLING_ROWS_58_60,
+        "tooling_estimate_inr": round(QUOTE_CONSTANTS["die_cost_inr"], 2),
+        "costing_weight_kg": round(costing_weight_kg, 4),
+        "gross_melt_kg": round(gross_melt_kg, 4),
+        "yield_factor": round(yield_factor, 4),
+        "inr_breakdown": {
+            "Raw material": round(raw_material_total_inr, 2),
+            "Machine energy / PDC": round(machine_cost_inr, 2),
+            "Consumable": round(consumable_inr, 2),
+            "Melting cost": round(melting_cost_inr, 2),
+            "Fettling": round(fettling_inr, 2),
+            "Shot blast": round(shot_blast_inr, 2),
+            "Cleaning / washing": round(cleaning_inr, 2),
+            "Die amortization": round(die_amortization_inr, 2),
+            "Freight": round(freight_inr, 2),
+            "Port / handling": round(port_cost_inr, 2),
+            "R&D": round(rnd_inr, 2),
+            "S&A": round(sa_inr, 2),
+            "EBIT": round(ebit_inr, 2),
+        },
         "fluctuation_range": fluctuation_range,
         "machine_details": {
             "required_tonnage": round(required_tonnage, 1),
