@@ -152,6 +152,7 @@ def analyze():
             "surface_area_mm2": round(traits.get("surface_area", 0), 2),
             "projected_area_mm2": round(traits.get("projected_area", 0), 2),
             "dimensions_mm": traits.get("dimensions", {}),
+            "feature_signature": traits.get("feature_signature", {}),
             "topology": traits.get("topology", {}),
             "validation": traits.get("validation", {}),
         },

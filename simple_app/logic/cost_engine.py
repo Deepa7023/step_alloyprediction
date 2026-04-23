@@ -224,6 +224,7 @@ def _topology_inputs(traits):
 
 def _geometry_inputs(traits):
     dimensions = _normalize_dimensions(traits.get("dimensions"))
+    feature_signature = traits.get("feature_signature") or {}
     max_dim = dimensions["x"]
     mid_dim = dimensions["y"]
     min_dim = dimensions["z"]
@@ -252,6 +253,7 @@ def _geometry_inputs(traits):
 
     return {
         "dimensions": dimensions,
+        "feature_signature": feature_signature,
         "volume": volume,
         "projected_area": projected_area,
         "surface_area": surface_area,
@@ -265,6 +267,12 @@ def _geometry_inputs(traits):
         "flow_length_ratio": flow_length_ratio,
         "aspect_ratio": aspect_ratio,
         "compactness": compactness,
+        "hole_count_estimate": max(0, _safe_int(feature_signature.get("hole_count_estimate"), 0)),
+        "pocket_count_estimate": max(0, _safe_int(feature_signature.get("pocket_count_estimate"), 0)),
+        "rib_count_estimate": max(0, _safe_int(feature_signature.get("rib_count_estimate"), 0)),
+        "boss_count_estimate": max(0, _safe_int(feature_signature.get("boss_count_estimate"), 0)),
+        "depth_factor": _clamp(_safe_float(feature_signature.get("depth_factor"), 1.0), 0.6, 4.0),
+        "thin_wall_score": _clamp(_safe_float(feature_signature.get("thin_wall_score"), 1.0), 0.2, 3.5),
     }
 
 
@@ -276,6 +284,10 @@ def _complexity_factors(geometry, topology, slider_count):
         + max(geometry["true_surface_factor"] - 1.3, 0.0) * 0.12
         + max(geometry["aspect_ratio"] - 3.0, 0.0) * 0.015
         + max(topology_density - 2.5, 0.0) * 0.015
+        + geometry["hole_count_estimate"] * 0.012
+        + geometry["pocket_count_estimate"] * 0.018
+        + geometry["rib_count_estimate"] * 0.014
+        + geometry["boss_count_estimate"] * 0.01
         + slider_count * 0.04,
         1.0,
         1.45,
@@ -333,6 +345,13 @@ def _machine_selection(projected_area, gross_melt_kg, geometry, complexity, prop
     force_kn = pressure_area * props["injection_pressure"] / 1000.0
     force_tonne = force_kn / 9.81
     req_tonnage = force_tonne * _clamp(1.12 + (complexity["overall_complexity"] - 1.0) * 0.35, 1.12, 1.42)
+    req_tonnage *= _clamp(
+        1.0
+        + geometry["depth_factor"] * 0.015
+        + geometry["pocket_count_estimate"] * 0.01,
+        1.0,
+        1.18,
+    )
 
     shot_utilization = _clamp(
         0.72
@@ -375,8 +394,20 @@ def _cycle_model(weight_g, geometry, complexity, slider_count, props):
         + 0.030 * (max(weight_g, 1.0) ** 0.46)
     ) * props["solidification_factor"]
     die_open_close_s = 6.5 + 0.018 * geometry["max_dim"] + 0.002 * (geometry["projected_area"] ** 0.5)
-    spray_extract_s = 4.8 + max(complexity["fine_feature_factor"] - 1.0, 0.0) * 4.0 + slider_count * 1.7
-    trim_handle_s = 2.8 + slider_count * 1.1 + max(complexity["quality_risk_factor"] - 1.0, 0.0) * 2.0
+    spray_extract_s = (
+        4.8
+        + max(complexity["fine_feature_factor"] - 1.0, 0.0) * 4.0
+        + slider_count * 1.7
+        + geometry["rib_count_estimate"] * 0.18
+        + geometry["boss_count_estimate"] * 0.12
+    )
+    trim_handle_s = (
+        2.8
+        + slider_count * 1.1
+        + max(complexity["quality_risk_factor"] - 1.0, 0.0) * 2.0
+        + geometry["hole_count_estimate"] * 0.1
+        + geometry["pocket_count_estimate"] * 0.14
+    )
 
     cycle_s = max(16.0, fill_s + intensification_s + solidification_s + die_open_close_s + spray_extract_s + trim_handle_s)
     return {
@@ -400,6 +431,14 @@ def _tooling_costs(projected_area, machine_tonnage, slider_count, metal, geometr
         + max(topology["solids"] - 1, 0) * 0.05,
         1.0,
         1.55,
+    )
+    die_complexity = _clamp(
+        die_complexity
+        + geometry["pocket_count_estimate"] * 0.015
+        + geometry["rib_count_estimate"] * 0.012
+        + geometry["hole_count_estimate"] * 0.008,
+        1.0,
+        1.7,
     )
     thermal_factor = METAL_PROPERTIES[metal]["tool_wear_factor"]
     base_die = 500_000 * (area_cm2 / 50.0) ** 0.67
@@ -434,6 +473,8 @@ def _secondary_process_costs(weight_kg, costing_weight_kg, geometry, complexity,
     trim_factor = _clamp(
         0.55
         + max(complexity["fine_feature_factor"] - 1.0, 0.0) * 0.9
+        + geometry["hole_count_estimate"] * 0.04
+        + geometry["rib_count_estimate"] * 0.03
         + slider_count * 0.10,
         0.55,
         1.55,
@@ -445,7 +486,7 @@ def _secondary_process_costs(weight_kg, costing_weight_kg, geometry, complexity,
         xray_inr = weight_kg * QUOTE_CONSTANTS["xray_rate_inr_per_kg"] * _clamp(complexity["quality_risk_factor"], 1.0, 1.35)
 
     vmc_inr = 0.0
-    if geometry["true_surface_factor"] > 1.75 or topology["faces"] > 180:
+    if geometry["true_surface_factor"] > 1.75 or topology["faces"] > 180 or geometry["pocket_count_estimate"] >= 2:
         vmc_inr = weight_kg * QUOTE_CONSTANTS["vmc_rate_inr_per_kg"] * _clamp(complexity["fine_feature_factor"], 1.0, 1.4)
 
     qa_inr = costing_weight_kg * QUOTE_CONSTANTS["qa_rate_inr_per_kg"] * _clamp(

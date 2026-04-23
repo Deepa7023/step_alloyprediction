@@ -108,6 +108,64 @@ def _normalize_traits(volume_mm3, surface_mm2, dimensions, projected_area_mm2, t
     }
 
 
+def _feature_signature(traits):
+    dimensions = traits.get("dimensions") or {"x": 1.0, "y": 1.0, "z": 1.0}
+    topology = traits.get("topology") or {}
+    validation = traits.get("validation") or {}
+
+    x = max(_safe_float(dimensions.get("x"), 1.0), 0.1)
+    y = max(_safe_float(dimensions.get("y"), 1.0), 0.1)
+    z = max(_safe_float(dimensions.get("z"), 1.0), 0.1)
+    volume = max(_safe_float(traits.get("volume"), 0.0), 1.0)
+    projected_area = max(_safe_float(traits.get("projected_area"), x * y), 1.0)
+    surface_area = max(_safe_float(traits.get("surface_area"), 2.0 * projected_area), 1.0)
+
+    mean_thickness = max(volume / max(surface_area / 2.0, 1.0), 0.1)
+    aspect_ratio = x / max(z, 0.1)
+    plan_ratio = x / max(y, 0.1)
+    bbox_volume = max(x * y * z, 1.0)
+    bbox_fill_ratio = _safe_float(validation.get("bbox_fill_ratio"), volume / bbox_volume)
+    surface_efficiency = _safe_float(validation.get("surface_efficiency"), surface_area / max(2.0 * ((x * y) + (y * z) + (x * z)), 1.0))
+
+    faces = max(_safe_float(topology.get("faces"), 0.0), 0.0)
+    edges = max(_safe_float(topology.get("edges"), 0.0), 0.0)
+    face_density = faces / max(surface_area / 100.0, 1.0)
+
+    hole_count_estimate = max(0, int(round(max(face_density - 2.0, 0.0) * 1.8 + max(0.55 - bbox_fill_ratio, 0.0) * 10.0)))
+    pocket_count_estimate = max(0, int(round(max(surface_efficiency - 0.92, 0.0) * 12.0 + max(0.58 - bbox_fill_ratio, 0.0) * 6.0)))
+    rib_count_estimate = max(0, int(round(max(aspect_ratio - 2.0, 0.0) * 1.2 + max(edges / max(faces, 1.0) - 2.5, 0.0) * 1.4)))
+    boss_count_estimate = max(0, int(round(max(face_density - 3.5, 0.0) * 1.2 + max(surface_efficiency - 1.05, 0.0) * 8.0)))
+    depth_factor = round(_safe_float(projected_area / max(volume / max(z, 0.1), 1.0), 1.0), 4)
+    thin_wall_score = round(_safe_float(1.0 / max(mean_thickness, 0.5), 1.0), 4)
+
+    if mean_thickness < 4.0 and bbox_fill_ratio < 0.7 and pocket_count_estimate >= 1:
+        profile = "housing"
+    elif mean_thickness < 3.2 and aspect_ratio > 4.0:
+        profile = "plate"
+    elif rib_count_estimate >= 3 and aspect_ratio > 2.5:
+        profile = "ribbed"
+    elif hole_count_estimate >= 2 and mean_thickness >= 4.0:
+        profile = "bracket"
+    else:
+        profile = "block"
+
+    return {
+        "profile": profile,
+        "mean_thickness_mm": round(mean_thickness, 3),
+        "aspect_ratio": round(aspect_ratio, 3),
+        "plan_ratio": round(plan_ratio, 3),
+        "bbox_fill_ratio": round(bbox_fill_ratio, 4),
+        "surface_efficiency": round(surface_efficiency, 4),
+        "face_density": round(face_density, 4),
+        "hole_count_estimate": hole_count_estimate,
+        "pocket_count_estimate": pocket_count_estimate,
+        "rib_count_estimate": rib_count_estimate,
+        "boss_count_estimate": boss_count_estimate,
+        "depth_factor": depth_factor,
+        "thin_wall_score": thin_wall_score,
+    }
+
+
 def _load_mesh(file_path):
     mesh_raw = trimesh.load(file_path)
     if isinstance(mesh_raw, trimesh.Scene):
@@ -443,13 +501,15 @@ def analyze_cad(file_path):
             validation=validation,
             note="; ".join(note_parts),
         )
+        traits["feature_signature"] = _feature_signature(traits)
 
         logger.info(
-            "GEOMETRY: dims=%s vol=%scm3 proj=%smm2 fill=%s",
+            "GEOMETRY: dims=%s vol=%scm3 proj=%smm2 fill=%s profile=%s",
             traits["dimensions"],
             round(traits["volume"] / 1000.0, 2),
             round(traits["projected_area"], 2),
             traits["validation"].get("bbox_fill_ratio"),
+            traits["feature_signature"].get("profile"),
         )
 
         engine_name = "OCP_PRECISE" if precise_data.get("status") == "success" else "MESH_FALLBACK"

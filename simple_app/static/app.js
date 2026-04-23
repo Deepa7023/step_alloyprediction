@@ -39,11 +39,20 @@ function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
-function drawCadPreview(dimensions) {
+function svgCircle(cx, cy, r, stroke = "#0f172a", fill = "rgba(255,255,255,0.55)") {
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" stroke="${stroke}" stroke-width="2" fill="${fill}" />`;
+}
+
+function drawCadPreview(dimensions, featureSignature = {}, fileName = "") {
   const x = Math.max(Number(dimensions?.x) || 1, 1);
   const y = Math.max(Number(dimensions?.y) || 1, 1);
   const z = Math.max(Number(dimensions?.z) || 1, 1);
   const maxDim = Math.max(x, y, z);
+  const profile = featureSignature?.profile || "block";
+  const holes = Math.max(Number(featureSignature?.hole_count_estimate) || 0, 0);
+  const pockets = Math.max(Number(featureSignature?.pocket_count_estimate) || 0, 0);
+  const ribs = Math.max(Number(featureSignature?.rib_count_estimate) || 0, 0);
+  const bosses = Math.max(Number(featureSignature?.boss_count_estimate) || 0, 0);
 
   const sx = 150 * (x / maxDim);
   const sy = 110 * (y / maxDim);
@@ -66,6 +75,43 @@ function drawCadPreview(dimensions) {
   const points = (list) => list.map(([px, py]) => `${px},${py}`).join(" ");
   const line = (a, b, color, width = 2.5, dash = "") =>
     `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${color}" stroke-width="${width}" stroke-linecap="round" ${dash ? `stroke-dasharray="${dash}"` : ""} />`;
+
+  const featureSvg = [];
+
+  if (profile === "housing") {
+    featureSvg.push(`<rect x="${ox - sx * 0.28}" y="${oy - sy * 0.18}" width="${sx * 0.48}" height="${sy * 0.40}" rx="10" fill="rgba(255,255,255,0.40)" stroke="#0f766e" stroke-width="2" />`);
+    featureSvg.push(`<rect x="${ox - sx * 0.18 + depth[0] * 0.15}" y="${oy - sy * 0.08 + depth[1] * 0.15}" width="${sx * 0.26}" height="${sy * 0.18}" rx="7" fill="rgba(5,150,105,0.08)" stroke="#b45309" stroke-width="1.8" />`);
+  }
+
+  if (profile === "bracket") {
+    featureSvg.push(`<path d="M ${frontTopLeft[0] + sx * 0.10} ${frontBottomLeft[1] - sy * 0.10} L ${frontTopLeft[0] + sx * 0.10} ${frontTopLeft[1] + sy * 0.12} L ${frontTopLeft[0] + sx * 0.32} ${frontTopLeft[1] + sy * 0.12}" fill="none" stroke="#0f766e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />`);
+  }
+
+  if (profile === "ribbed") {
+    const ribTotal = Math.min(Math.max(ribs, 3), 6);
+    for (let i = 0; i < ribTotal; i += 1) {
+      const t = (i + 1) / (ribTotal + 1);
+      const start = [frontTopLeft[0] + sx * t, frontTopLeft[1]];
+      const end = [frontTopLeft[0] + sx * t + depth[0], frontTopLeft[1] + depth[1]];
+      featureSvg.push(line(start, end, "#0f766e", 1.8));
+    }
+  }
+
+  const holeTotal = Math.min(holes, 4);
+  for (let i = 0; i < holeTotal; i += 1) {
+    const t = (i + 1) / (holeTotal + 1);
+    featureSvg.push(svgCircle(frontTopLeft[0] + sx * t, oy, Math.max(5, Math.min(sx, sy) * 0.06)));
+  }
+
+  const bossTotal = Math.min(bosses, 3);
+  for (let i = 0; i < bossTotal; i += 1) {
+    const t = (i + 1) / (bossTotal + 1);
+    featureSvg.push(svgCircle(backTopLeft[0] + sx * t * 0.75, backTopLeft[1] + sy * 0.35, Math.max(4, Math.min(sx, sy) * 0.04), "#b45309", "rgba(217,119,6,0.14)"));
+  }
+
+  if (pockets > 0 && profile !== "housing") {
+    featureSvg.push(`<rect x="${ox - sx * 0.20}" y="${oy - sy * 0.12}" width="${sx * 0.36}" height="${sy * 0.24}" rx="8" fill="rgba(255,255,255,0.32)" stroke="#0f172a" stroke-width="1.8" stroke-dasharray="6 4" />`);
+  }
 
   cadPreview.innerHTML = `
     <svg viewBox="0 0 320 280" role="img" aria-label="Lightweight CAD preview">
@@ -94,12 +140,16 @@ function drawCadPreview(dimensions) {
       ${line(frontTopRight, backTopRight, "#0f172a")}
       ${line(frontBottomRight, backBottomRight, "#0f172a")}
       ${line(frontBottomLeft, backBottomLeft, "#0f172a", 2.2, "6 5")}
+      ${featureSvg.join("")}
       <text x="24" y="30" fill="#064e3b" font-size="13" font-weight="700">X ${number(x, " mm")}</text>
       <text x="24" y="50" fill="#92400e" font-size="13" font-weight="700">Y ${number(y, " mm")}</text>
       <text x="24" y="70" fill="#0f172a" font-size="13" font-weight="700">Z ${number(z, " mm")}</text>
+      <text x="24" y="94" fill="#334155" font-size="12" font-weight="700">Profile ${profile}</text>
     </svg>
   `;
-  cadPreviewLabel.textContent = `${number(x, " mm")} x ${number(y, " mm")} x ${number(z, " mm")}`;
+  cadPreviewLabel.textContent = fileName
+    ? `${fileName} · ${number(x, " mm")} x ${number(y, " mm")} x ${number(z, " mm")}`
+    : `${number(x, " mm")} x ${number(y, " mm")} x ${number(z, " mm")}`;
 }
 
 function showProcessing() {
@@ -149,7 +199,7 @@ form.addEventListener("submit", async (event) => {
     costTotal.textContent = money(data.cost.per_part_cost_inr);
     costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} - ${data.cost.alloy_source}`;
     heroCastingWeight.textContent = number(data.cost.weight_g, " g");
-    drawCadPreview(data.geometry.dimensions_mm || {});
+    drawCadPreview(data.geometry.dimensions_mm || {}, data.geometry.feature_signature || {}, data.file || "");
 
     geometryGrid.innerHTML = [
       metric("Surface area", number(data.geometry.surface_area_mm2 / 100, " cm2")),
