@@ -11,21 +11,6 @@ METAL_PROPERTIES = {
     "Steel_Stainless":  {"density": 0.00780, "price_per_kg": 2.15, "injection_pressure": 110, "volatility": 0.06},
 }
 
-# Alloy-specific Indian market prices (INR/kg)
-# Based on LME spot + India import duty + local dealer premium
-_ALLOY_PRICE_INR = {
-    "Aluminum_A380":   215,
-    "Aluminum_ADC12":  210,
-    "Aluminum_A356":   228,
-    "Aluminum_6061":   250,
-    "Zinc_ZD3":        272,
-    "Zinc_Zamak5":     288,
-    "Magnesium_AZ91D": 390,
-    "Magnesium_AM60B": 412,
-    "Copper_Brass":    685,
-    "Steel_Stainless": 162,
-}
-
 # HPDC machine hourly rates in INR (depreciation + power + maintenance, no labour)
 # Source: AIFA / ACMA India benchmarks
 _MACHINE_RATES_INR = [
@@ -60,6 +45,7 @@ QUOTE_CONSTANTS = {
     "labour_rate_inr_per_hour":  1_800,   # operator + material handler + QC support
     "fettling_time_minutes":        5.0,
     "freight_rate_inr_per_kg":      0.0,
+    "metal_price_inr_per_kg":     212.80,
     "credit_cost_inr":             75.0,
 }
 
@@ -152,7 +138,7 @@ def calculate_hpdc_cost(
     costing_weight_kg = gross_melt_kg * (1.0 + QUOTE_CONSTANTS["melting_process_loss_percent"] / 100.0)
 
     # ── 2. Material cost ─────────────────────────────────────────────────────
-    alloy_price_inr   = _ALLOY_PRICE_INR.get(metal, 215)
+    alloy_price_inr   = QUOTE_CONSTANTS["metal_price_inr_per_kg"]
     material_cost_inr = costing_weight_kg * alloy_price_inr
 
     # ── 3. Machine selection (clamping force) ────────────────────────────────
