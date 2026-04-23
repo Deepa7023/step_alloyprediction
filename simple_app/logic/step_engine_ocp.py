@@ -87,17 +87,36 @@ def _analyze_with_ocp(file_path: str) -> Dict[str, Any]:
         if shape.IsNull():
             return {"status": "fallback", "reason": "OCP_SHAPE_NULL"}
 
-        # 2. Volume (using _s suffix for static method)
+        # 2. Extract largest solid to avoid multi-body doubling
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.TopAbs import TopAbs_SOLID
+        
+        largest_solid = None
+        max_vol = -1.0
+        
+        exp = TopExp_Explorer(shape, TopAbs_SOLID)
+        while exp.More():
+            s = exp.Current()
+            v_props = GProp_GProps()
+            BRepGProp.VolumeProperties_s(s, v_props)
+            current_vol = v_props.Mass()
+            if current_vol > max_vol:
+                max_vol = current_vol
+                largest_solid = s
+            exp.Next()
+            
+        # Fallback to full shape if no solids found (e.g. just shells)
+        final_shape = largest_solid if largest_solid else shape
+        
+        # 3. Calculate Properties for the selected part
         vol_props = GProp_GProps()
-        BRepGProp.VolumeProperties_s(shape, vol_props)
+        BRepGProp.VolumeProperties_s(final_shape, vol_props)
 
-        # 3. Surface Area (using _s suffix)
         surf_props = GProp_GProps()
-        BRepGProp.SurfaceProperties_s(shape, surf_props)
-
-        # 4. Bounding Box (using _s suffix)
+        BRepGProp.SurfaceProperties_s(final_shape, surf_props)
+        
         bbox = Bnd_Box()
-        BRepBndLib.Add_s(shape, bbox)
+        BRepBndLib.Add_s(final_shape, bbox)
         
         try:
             # Try tuple return first
@@ -117,20 +136,20 @@ def _analyze_with_ocp(file_path: str) -> Dict[str, Any]:
         dy = abs(ymax - ymin)
         dz = abs(zmax - zmin)
 
-        # 5. Topology counts
+        # 6. Topology counts (on the selected part)
         topology = {"solids": 0, "shells": 0, "faces": 0, "edges": 0, "vertices": 0}
         topo_map = {
             TopAbs_SOLID: "solids", TopAbs_SHELL: "shells",
             TopAbs_FACE: "faces", TopAbs_EDGE: "edges", TopAbs_VERTEX: "vertices"
         }
         for topo_type, key in topo_map.items():
-            exp = TopExp_Explorer(shape, topo_type)
+            exp = TopExp_Explorer(final_shape, topo_type)
             while exp.More():
                 topology[key] += 1
                 exp.Next()
 
-        # 6. Validation
-        is_valid = BRepCheck_Analyzer(shape).IsValid()
+        # 7. Validation
+        is_valid = BRepCheck_Analyzer(final_shape).IsValid()
 
         result = {
             "status": "success",
@@ -199,7 +218,9 @@ def _analyze_with_gmsh(file_path: str) -> Dict[str, Any]:
             parts = [g for g in mesh.geometry.values() if isinstance(g, trimesh.Trimesh)]
             if not parts:
                 return {"status": "fallback", "reason": "GMSH_EMPTY_MESH"}
-            mesh = trimesh.util.concatenate(parts)
+            # Take LARGEST solid only to avoid assembly doubling
+            parts.sort(key=lambda m: abs(m.volume), reverse=True)
+            mesh = parts[0]
 
         if not hasattr(mesh, 'vertices') or len(mesh.vertices) == 0:
             return {"status": "fallback", "reason": "GMSH_NO_VERTICES"}

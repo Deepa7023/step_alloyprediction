@@ -14,12 +14,12 @@ METAL_PROPERTIES = {
 # HPDC machine hourly rates in INR (depreciation + power + maintenance)
 # Source: AIFA / ACMA India benchmarks recalibrated for competitive supply
 _MACHINE_RATES_INR = [
-    {"limit": 250,  "rate_inr":  2_200},
-    {"limit": 500,  "rate_inr":  4_200},
-    {"limit": 850,  "rate_inr":  7_500},
-    {"limit": 1250, "rate_inr": 11_500},
-    {"limit": 2000, "rate_inr": 18_000},
-    {"limit": 4000, "rate_inr": 34_000},
+    {"limit": 250,  "rate_inr":  1_400},
+    {"limit": 500,  "rate_inr":  2_800},
+    {"limit": 850,  "rate_inr":  5_500},
+    {"limit": 1250, "rate_inr":  9_000},
+    {"limit": 2000, "rate_inr": 15_000},
+    {"limit": 4000, "rate_inr": 30_000},
 ]
 
 # Die life (shots before major refurbishment) — varies by alloy thermal load
@@ -32,12 +32,12 @@ def _die_life(metal: str) -> int:
     return 100_000  # Aluminum A380 / A356 / 6061
 
 QUOTE_CONSTANTS = {
-    "runner_overflow_percent":      8.0,
-    "scrap_percent":                3.0,
+    "runner_overflow_percent":      4.5,
+    "scrap_percent":                2.5,
     "melting_process_loss_percent": 6.0,
-    "rnd_percent":                  1.5,
-    "sa_percent":                   3.5,
-    "ebit_percent":                 5.0,   # Total margins ~10% competitive for automotive
+    "rnd_percent":                  4.0,
+    "sa_percent":                   6.1,
+    "ebit_percent":                10.0,   # Total margins 20.1% as per original spreadsheet structure
     "consumable_inr":               8.0,
     "melting_cost_inr_per_kg":     14.0,
     "shot_blast_inr_per_kg":        7.0,
@@ -47,7 +47,7 @@ QUOTE_CONSTANTS = {
     "fettling_time_minutes":        5.0,
     "freight_rate_inr_per_kg":      0.0,
     "metal_price_inr_per_kg":     212.80,
-    "credit_cost_inr":             20.0,   # Reduced from 75
+    "credit_cost_inr":              0.0,   # Absorbed in S&A or not applicable
 }
 
 TOOLING_ROWS_58_60 = [

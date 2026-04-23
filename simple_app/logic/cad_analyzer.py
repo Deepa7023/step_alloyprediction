@@ -18,9 +18,12 @@ SUPPORTED_CAD_EXTENSIONS = BREP_EXTENSIONS + MESH_EXTENSIONS
 def _load_mesh(file_path):
     mesh_raw = trimesh.load(file_path)
     if isinstance(mesh_raw, trimesh.Scene):
+        # Multi-body scene detected. Filter for trimesh objects and take the largest.
         parts = [g for g in mesh_raw.geometry.values() if isinstance(g, trimesh.Trimesh)]
         if parts:
-            return trimesh.util.concatenate(parts)
+            # Sort by volume descending and take the first
+            parts.sort(key=lambda m: abs(m.volume), reverse=True)
+            return parts[0]
     elif isinstance(mesh_raw, trimesh.Trimesh):
         return mesh_raw
     return None
