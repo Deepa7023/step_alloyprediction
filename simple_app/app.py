@@ -148,8 +148,6 @@ def analyze():
             "alloy": cost["alloy"],
             "alloy_source": alloy_source,
             "detected_alloy": metal if alloy_source != "Default fallback" else None,
-            "annual_volume": cost["annual_volume"],
-            "quote_basis": cost.get("quote_basis", "Reference model"),
             "weight_g": cost["weight_g"],
             "costing_weight_kg": cost.get("costing_weight_kg"),
             "gross_melt_kg": cost.get("gross_melt_kg"),
@@ -158,6 +156,12 @@ def analyze():
             "tooling_rows_58_60": cost.get("tooling_rows_58_60", []),
             "quote_sheet_rows": cost.get("quote_sheet_rows", []),
             "spreadsheet_constants": cost.get("spreadsheet_constants", {}),
+            "summary_breakdown_inr": {
+                "Machine conversion": round(cost["machine_cost"] * INR_RATE, 2),
+                "Material": round(cost["material_cost"] * INR_RATE, 2),
+                "Port / handling": round(cost["port_cost"] * INR_RATE, 2),
+                "Tooling amortization": round(cost["amortization"] * INR_RATE, 2),
+            },
             "breakdown_inr": breakdown_inr,
             "per_part_cost_inr": round(cost["total_unit_cost"] * INR_RATE, 2),
             "range_inr": {

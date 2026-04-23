@@ -122,18 +122,22 @@ form.addEventListener("submit", async (event) => {
       metric("Projected area", number(data.geometry.projected_area_mm2, " mm2"))
     ].join("");
 
-    costBreakdown.innerHTML = Object.entries(data.cost.breakdown_inr)
+    const summaryBreakdown = data.cost.summary_breakdown_inr || {};
+    const summaryHtml = Object.entries(summaryBreakdown)
       .map(([label, value]) => `
         <div class="cost-line">
           <span>${label}</span>
           <strong>${money(value)}</strong>
         </div>
-      `).join("") + sheetSections(data.cost.quote_sheet_rows || []);
+      `).join("");
+
+    const sheetHtml = sheetSections(data.cost.quote_sheet_rows || []);
+    costBreakdown.innerHTML = `${summaryHtml}${sheetHtml}`;
 
     const constants = data.cost.spreadsheet_constants || {};
     costMeta.innerHTML = [
-      metric("Annual volume", number(data.cost.annual_volume)),
-      metric("Quote basis", data.cost.quote_basis || "Reference model"),
+      metric("Detected alloy", data.cost.detected_alloy ? data.cost.detected_alloy.replaceAll("_", " ") : "Fallback"),
+      metric("Tooling estimate", money(data.cost.tooling_estimate_inr)),
       metric("Metal price", money(constants.metal_price_inr_per_kg || 0) + "/kg"),
       metric("Runner + scrap", `${number(constants.runner_overflow_percent)}% + ${number(constants.scrap_percent)}%`),
       metric("Melting loss", `${number(constants.melting_process_loss_percent)}%`),
@@ -143,7 +147,6 @@ form.addEventListener("submit", async (event) => {
       metric("Gross melt", number(data.cost.gross_melt_kg, " kg")),
       metric("Yield factor", number(data.cost.yield_factor)),
       metric("Costing weight", number(data.cost.costing_weight_kg, " kg")),
-      metric("Tooling estimate", money(data.cost.tooling_estimate_inr)),
       ...((data.cost.tooling_rows_58_60 || []).map((row) =>
         metric(`Row ${row.row}`, `${row.label}: ${row.quantity} ${row.unit}`)
       ))

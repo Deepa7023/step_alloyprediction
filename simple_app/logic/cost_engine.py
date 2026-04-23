@@ -224,7 +224,6 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         "annual_volume": production_qty,
         "alloy": metal,
         "market_price": round(market_price, 2),
-        "quote_basis": "Render-light spreadsheet costing",
         "spreadsheet_constants": QUOTE_CONSTANTS,
         "tooling_rows_58_60": TOOLING_ROWS_58_60,
         "quote_sheet_rows": quote_sheet_rows,
