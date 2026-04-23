@@ -539,6 +539,13 @@ label,
   gap: 18px;
 }
 
+.two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
 .merged-panel {
   display: grid;
   gap: 14px;
@@ -671,6 +678,7 @@ label,
 @media (max-width: 1100px) {
   .main-container,
   .simple-report-grid,
+  .two-col-grid,
   .cost-hero {
     grid-template-columns: 1fr;
   }
