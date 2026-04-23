@@ -2,19 +2,16 @@ const form = document.querySelector("#quoteForm");
 const fileInput = document.querySelector("#file");
 const pickFile = document.querySelector("#pickFile");
 const fileLabel = document.querySelector("#fileLabel");
+const alloyType = document.querySelector("#alloy_type");
+const previewAlloy = document.querySelector("#previewAlloy");
 const statusEl = document.querySelector("#status");
 const emptyState = document.querySelector("#emptyState");
 const processingState = document.querySelector("#processingState");
 const results = document.querySelector("#results");
-const reportFile = document.querySelector("#reportFile");
-const reportEngine = document.querySelector("#reportEngine");
 const geometryGrid = document.querySelector("#geometryGrid");
 const costTotal = document.querySelector("#costTotal");
 const costAlloy = document.querySelector("#costAlloy");
-const costRange = document.querySelector("#costRange");
-const costRangeNote = document.querySelector("#costRangeNote");
 const costBreakdown = document.querySelector("#costBreakdown");
-const costMeta = document.querySelector("#costMeta");
 
 const money = (value) => new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -39,39 +36,6 @@ function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
-function sheetRow(row) {
-  const value = Number(row.value || 0);
-  const isMoney = row.unit === "INR" || row.unit === "INR/kg" || row.unit === "INR/USD";
-  const displayValue = row.unit === "set"
-    ? `${value || row.quantity || 0} set`
-    : isMoney
-      ? money(value)
-      : `${number(value)}${row.unit ? ` ${row.unit}` : ""}`;
-  return `
-    <div class="sheet-row">
-      <span class="sheet-row-no">${row.row}</span>
-      <span class="sheet-label">${row.label}</span>
-      <span class="sheet-note">${row.note || row.code || ""}</span>
-      <strong>${displayValue}</strong>
-    </div>
-  `;
-}
-
-function sheetSections(rows) {
-  const grouped = rows.reduce((acc, row) => {
-    acc[row.section] = acc[row.section] || [];
-    acc[row.section].push(row);
-    return acc;
-  }, {});
-
-  return Object.entries(grouped).map(([section, items]) => `
-    <section class="sheet-section">
-      <h3>${section}</h3>
-      ${items.map(sheetRow).join("")}
-    </section>
-  `).join("");
-}
-
 function showProcessing() {
   emptyState.classList.add("hidden");
   results.classList.add("hidden");
@@ -88,10 +52,16 @@ pickFile.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
-  fileLabel.textContent = file ? file.name : "Upload CAD file";
+  fileLabel.textContent = file ? "CAD file selected" : "Upload CAD file";
   statusEl.textContent = file
-    ? `${file.name} selected. Run estimation when ready.`
+    ? "CAD file selected. Run estimation when ready."
     : "Upload CAD. Alloy will be detected automatically when metadata is available.";
+});
+
+alloyType.addEventListener("change", () => {
+  previewAlloy.textContent = alloyType.value === "auto"
+    ? "Auto"
+    : alloyType.options[alloyType.selectedIndex].textContent;
 });
 
 form.addEventListener("submit", async (event) => {
@@ -110,16 +80,13 @@ form.addEventListener("submit", async (event) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(errorMessage(data, response));
 
-    reportFile.textContent = data.file;
-    reportEngine.textContent = `Geometry engine: ${data.engine}`;
     costTotal.textContent = money(data.cost.per_part_cost_inr);
     costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} - ${data.cost.alloy_source} - ${number(data.cost.weight_g, " g")}`;
-    costRange.textContent = `${money(data.cost.range_inr.min)} - ${money(data.cost.range_inr.max)}`;
-    costRangeNote.textContent = `Range includes ${data.cost.range_inr.percent}% metal and process variation.`;
 
     geometryGrid.innerHTML = [
       metric("Surface area", number(data.geometry.surface_area_mm2 / 100, " cm2")),
-      metric("Projected area", number(data.geometry.projected_area_mm2, " mm2"))
+      metric("Projected area", number(data.geometry.projected_area_mm2, " mm2")),
+      metric("Casting weight", number(data.cost.weight_g, " g"))
     ].join("");
 
     const summaryBreakdown = data.cost.summary_breakdown_inr || {};
@@ -131,26 +98,7 @@ form.addEventListener("submit", async (event) => {
         </div>
       `).join("");
 
-    const sheetHtml = sheetSections(data.cost.quote_sheet_rows || []);
-    costBreakdown.innerHTML = `${summaryHtml}${sheetHtml}`;
-
-    const constants = data.cost.spreadsheet_constants || {};
-    costMeta.innerHTML = [
-      metric("Detected alloy", data.cost.detected_alloy ? data.cost.detected_alloy.replaceAll("_", " ") : "Fallback"),
-      metric("Tooling estimate", money(data.cost.tooling_estimate_inr)),
-      metric("Metal price", money(constants.metal_price_inr_per_kg || 0) + "/kg"),
-      metric("Runner + scrap", `${number(constants.runner_overflow_percent)}% + ${number(constants.scrap_percent)}%`),
-      metric("Melting loss", `${number(constants.melting_process_loss_percent)}%`),
-      metric("R&D / S&A / EBIT", `${number(constants.rnd_percent)}% / ${number(constants.sa_percent)}% / ${number(constants.ebit_percent)}%`),
-      metric("Die cost", money(constants.die_cost_inr || 0)),
-      metric("Die life", number(constants.die_life_shots, " shots")),
-      metric("Gross melt", number(data.cost.gross_melt_kg, " kg")),
-      metric("Yield factor", number(data.cost.yield_factor)),
-      metric("Costing weight", number(data.cost.costing_weight_kg, " kg")),
-      ...((data.cost.quote_sheet_rows || []).filter((row) => [58, 59, 60].includes(row.row)).map((row) =>
-        metric(`Row ${row.row}`, `${row.label}: ${money(row.value)}`)
-      ))
-    ].join("");
+    costBreakdown.innerHTML = summaryHtml;
 
     statusEl.textContent = "Per-part HPDC estimate is ready.";
     showResults();

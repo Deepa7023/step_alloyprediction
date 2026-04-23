@@ -41,6 +41,10 @@ def _int_form(name, default):
 
 
 def _detect_alloy_hint(file_path, filename, analyzer_detected):
+    selected_alloy = request.form.get("alloy_type", "auto")
+    if selected_alloy in METAL_PROPERTIES:
+        return selected_alloy, "Selected alloy"
+
     if analyzer_detected in METAL_PROPERTIES:
         return analyzer_detected, "CAD metadata"
 
