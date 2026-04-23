@@ -11,15 +11,15 @@ METAL_PROPERTIES = {
     "Steel_Stainless":  {"density": 0.00780, "price_per_kg": 2.15, "injection_pressure": 110, "volatility": 0.06},
 }
 
-# HPDC machine hourly rates in INR (depreciation + power + maintenance, no labour)
-# Source: AIFA / ACMA India benchmarks
+# HPDC machine hourly rates in INR (depreciation + power + maintenance)
+# Source: AIFA / ACMA India benchmarks recalibrated for competitive supply
 _MACHINE_RATES_INR = [
-    {"limit": 250,  "rate_inr":  3_500},
-    {"limit": 500,  "rate_inr":  5_800},
-    {"limit": 850,  "rate_inr":  9_200},
-    {"limit": 1250, "rate_inr": 14_500},
-    {"limit": 2000, "rate_inr": 24_000},
-    {"limit": 4000, "rate_inr": 42_000},
+    {"limit": 250,  "rate_inr":  2_200},
+    {"limit": 500,  "rate_inr":  4_200},
+    {"limit": 850,  "rate_inr":  7_500},
+    {"limit": 1250, "rate_inr": 11_500},
+    {"limit": 2000, "rate_inr": 18_000},
+    {"limit": 4000, "rate_inr": 34_000},
 ]
 
 # Die life (shots before major refurbishment) — varies by alloy thermal load
@@ -35,18 +35,19 @@ QUOTE_CONSTANTS = {
     "runner_overflow_percent":      8.0,
     "scrap_percent":                3.0,
     "melting_process_loss_percent": 6.0,
-    "rnd_percent":                  4.0,
-    "sa_percent":                   6.1,
-    "ebit_percent":                10.0,
+    "rnd_percent":                  1.5,
+    "sa_percent":                   3.5,
+    "ebit_percent":                 5.0,   # Total margins ~10% competitive for automotive
     "consumable_inr":               8.0,
     "melting_cost_inr_per_kg":     14.0,
     "shot_blast_inr_per_kg":        7.0,
     "cleaning_washing_inr":         5.0,
-    "labour_rate_inr_per_hour":  1_800,   # operator + material handler + QC support
+    "operator_labour_inr_per_hour":  600,   # Machine operator overhead
+    "manual_labour_inr_per_hour":   100,   # Fettling / manual labor 
     "fettling_time_minutes":        5.0,
     "freight_rate_inr_per_kg":      0.0,
     "metal_price_inr_per_kg":     212.80,
-    "credit_cost_inr":             75.0,
+    "credit_cost_inr":             20.0,   # Reduced from 75
 }
 
 TOOLING_ROWS_58_60 = [
@@ -72,12 +73,12 @@ def _hpdc_die_cost_inr(projected_area_mm2: float, machine_tonnage: int, slider_c
     Reference: 50 cm² die ≈ ₹10 lakh (250 T single-cavity, no sliders).
     """
     area_cm2 = max(projected_area_mm2 / 100.0, 5.0)
-    base = 1_000_000 * (area_cm2 / 50.0) ** 0.65
+    base = 500_000 * (area_cm2 / 50.0) ** 0.65
     # Heavier machines need thicker, harder die steel → premium
-    tonnage_premium = max(0, machine_tonnage - 500) * 250
+    tonnage_premium = max(0, machine_tonnage - 500) * 200
     # Each slider adds side core + ejector mechanism + EDM machining
-    slider_add = slider_count * 200_000
-    return max(base + tonnage_premium + slider_add, 800_000)
+    slider_add = slider_count * 150_000
+    return max(base + tonnage_premium + slider_add, 400_000)
 
 
 def _tooling_costs(projected_area: float, machine_tonnage: int, slider_count: int, metal: str) -> dict:
@@ -161,14 +162,14 @@ def calculate_hpdc_cost(
     shots_hr   = 3600.0 / cycle_s
 
     # ── 5. Machine conversion cost ───────────────────────────────────────────
-    # Machine rate (INR/hr) + operator+support labour (INR/hr), location adjusted
-    hourly_inr     = machine_rate_inr * location_multiplier + QUOTE_CONSTANTS["labour_rate_inr_per_hour"]
+    # Machine rate (INR/hr) + operator overhead (INR/hr), location adjusted
+    hourly_inr     = machine_rate_inr * location_multiplier + QUOTE_CONSTANTS["operator_labour_inr_per_hour"]
     machine_cost_inr = hourly_inr / shots_hr
 
     # ── 6. Other conversion costs ────────────────────────────────────────────
     consumable_inr   = QUOTE_CONSTANTS["consumable_inr"]
     melting_cost_inr = costing_weight_kg * QUOTE_CONSTANTS["melting_cost_inr_per_kg"]
-    fettling_inr     = (QUOTE_CONSTANTS["fettling_time_minutes"] / 60.0) * QUOTE_CONSTANTS["labour_rate_inr_per_hour"]
+    fettling_inr     = (QUOTE_CONSTANTS["fettling_time_minutes"] / 60.0) * QUOTE_CONSTANTS["manual_labour_inr_per_hour"]
     shot_blast_inr   = costing_weight_kg * QUOTE_CONSTANTS["shot_blast_inr_per_kg"]
     cleaning_inr     = QUOTE_CONSTANTS["cleaning_washing_inr"]
 

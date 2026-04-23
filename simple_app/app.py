@@ -122,8 +122,8 @@ def analyze():
         traits["casting_weight_g_override"] = casting_weight_g
     annual_volume = _int_form("annual_volume", 10000)
     sliders = _int_form("sliders", 0)
-    port_cost_inr = _float_form("port_cost_inr", 0)
-    port_cost_usd = port_cost_inr / INR_RATE
+    annual_volume = _int_form("annual_volume", 10000)
+    sliders = _int_form("sliders", 0)
 
     try:
         cost = calculate_hpdc_cost(
@@ -132,7 +132,7 @@ def analyze():
             annual_volume=annual_volume,
             sliders=sliders,
             location_multiplier=1.0,
-            port_cost=port_cost_usd,
+            port_cost=0.0,
         )
     except ValueError as exc:
         logger.warning("Cost calculation failed for %s: %s", file.filename, exc)
@@ -142,7 +142,6 @@ def analyze():
         "Material": round(cost["material_cost"] * INR_RATE, 2),
         "Machine conversion": round(cost["machine_cost"] * INR_RATE, 2),
         "Tooling amortization": round(cost["amortization"] * INR_RATE, 2),
-        "Port / handling": round(cost["port_cost"] * INR_RATE, 2),
     }
 
     response = {
@@ -171,7 +170,6 @@ def analyze():
             "summary_breakdown_inr": {
                 "Machine conversion": round(cost["machine_cost"] * INR_RATE, 2),
                 "Material": round(cost["material_cost"] * INR_RATE, 2),
-                "Port / handling": round(cost["port_cost"] * INR_RATE, 2),
                 "Tooling amortization": round(cost["amortization"] * INR_RATE, 2),
             },
             "breakdown_inr": breakdown_inr,
