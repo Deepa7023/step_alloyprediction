@@ -34,6 +34,9 @@ QUOTE_CONSTANTS = {
     "ebit_percent": 10.0,
     "die_cost_inr": 1200000.0,
     "die_life_shots": 150000.0,
+    "base_projected_area_mm2": 37400.0,
+    "base_machine_tonnage": 500.0,
+    "min_tooling_inr": 350000.0,
     "consumable_inr": 5.0,
     "melting_cost_inr_per_kg": 12.0,
     "shot_blast_inr_per_kg": 6.0,
@@ -60,6 +63,39 @@ def _row(row, section, label, value=0.0, unit="INR", note="", code=""):
         "unit": unit,
         "note": note,
     }
+
+
+def _tooling_costs(projected_area, machine_tonnage, slider_count, weight_kg):
+    area_factor = max(0.45, math.sqrt(max(projected_area, 1.0) / QUOTE_CONSTANTS["base_projected_area_mm2"]))
+    tonnage_factor = max(0.75, math.sqrt(max(machine_tonnage, 1.0) / QUOTE_CONSTANTS["base_machine_tonnage"]))
+    slider_factor = 1 + (0.12 * max(0, slider_count))
+    weight_factor = max(0.85, min(1.35, 1 + math.log10(max(weight_kg * 1000, 1.0)) * 0.035))
+    complexity_factor = area_factor * tonnage_factor * slider_factor * weight_factor
+
+    hpdc_die = max(
+        QUOTE_CONSTANTS["min_tooling_inr"],
+        QUOTE_CONSTANTS["die_cost_inr"] * complexity_factor,
+    )
+    trimming_die = max(90000.0, hpdc_die * 0.18)
+    fixture = max(50000.0, hpdc_die * 0.08)
+    machining_tooling = max(60000.0, hpdc_die * 0.10)
+    gauges = max(40000.0, hpdc_die * 0.05)
+    compression_test = max(20000.0, hpdc_die * 0.025)
+    ct_scan = max(0.0, hpdc_die * 0.015 if projected_area > 25000 else 0.0)
+    total = hpdc_die + trimming_die + fixture + machining_tooling + gauges + compression_test + ct_scan
+
+    return {
+        "hpdc_die": round(hpdc_die, 2),
+        "trimming_die": round(trimming_die, 2),
+        "fixture": round(fixture, 2),
+        "machining_tooling": round(machining_tooling, 2),
+        "gauges": round(gauges, 2),
+        "compression_test": round(compression_test, 2),
+        "ct_scan": round(ct_scan, 2),
+        "total": round(total, 2),
+        "complexity_factor": round(complexity_factor, 4),
+    }
+
 
 def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multiplier=1.0, live_price_per_kg=None, port_cost=0.0):
     """
@@ -125,7 +161,8 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     ) * QUOTE_CONSTANTS["labour_rate_inr_per_hour"]
     shot_blast_inr = costing_weight_kg * QUOTE_CONSTANTS["shot_blast_inr_per_kg"]
     cleaning_inr = QUOTE_CONSTANTS["cleaning_washing_inr"]
-    die_amortization_inr = QUOTE_CONSTANTS["die_cost_inr"] / QUOTE_CONSTANTS["die_life_shots"]
+    tooling_costs = _tooling_costs(projected_area, machine_tonnage, slider_count, weight_kg)
+    die_amortization_inr = tooling_costs["total"] / QUOTE_CONSTANTS["die_life_shots"]
     freight_inr = costing_weight_kg * QUOTE_CONSTANTS["freight_rate_inr_per_kg"]
     port_cost_inr = port_cost * 83.5
 
@@ -144,7 +181,7 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
     total_unit_cost_inr = subtotal_before_margins_inr + rnd_inr + sa_inr + ebit_inr
     final_cost_before_tool_amort_inr = total_unit_cost_inr - die_amortization_inr
     total_unit_cost = total_unit_cost_inr / 83.5
-    tooling_cost_total = QUOTE_CONSTANTS["die_cost_inr"] / 83.5
+    tooling_cost_total = tooling_costs["total"] / 83.5
     amortization_cost = die_amortization_inr / 83.5
     material_cost = material_cost_inr / 83.5
     quote_sheet_rows = [
@@ -196,14 +233,14 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         _row(52, "Summary", "Freight Cost (DAP VC Noida)", freight_inr, "INR", code="G"),
         _row(55, "Summary", "Repeat Tool Amortization Cost", die_amortization_inr, "INR"),
         _row(56, "Summary", "Final Cost including tool amort. Cost", total_unit_cost_inr, "INR"),
-        _row(58, "Tooling", "HPDC Die cost", 1, "set"),
-        _row(59, "Tooling", "Trimming Die cost", 1, "set"),
-        _row(60, "Tooling", "Fixture Cost", 2, "set"),
-        _row(61, "Tooling", "Machining Tooling cost", 1, "set"),
-        _row(62, "Tooling", "Gauges Cost", 2, "set"),
-        _row(63, "Tooling", "Compression Test", 1, "set"),
-        _row(64, "Tooling", "CT Scan Cost (One Time)", 0, "As applicable"),
-        _row(65, "Tooling", "TOTAL Tooling Cost INR", QUOTE_CONSTANTS["die_cost_inr"], "INR"),
+        _row(58, "Tooling", "HPDC Die cost", tooling_costs["hpdc_die"], "INR", "1 set"),
+        _row(59, "Tooling", "Trimming Die cost", tooling_costs["trimming_die"], "INR", "1 set"),
+        _row(60, "Tooling", "Fixture Cost", tooling_costs["fixture"], "INR", "2 set"),
+        _row(61, "Tooling", "Machining Tooling cost", tooling_costs["machining_tooling"], "INR", "1 set"),
+        _row(62, "Tooling", "Gauges Cost", tooling_costs["gauges"], "INR", "2 set"),
+        _row(63, "Tooling", "Compression Test", tooling_costs["compression_test"], "INR", "1 set"),
+        _row(64, "Tooling", "CT Scan Cost (One Time)", tooling_costs["ct_scan"], "INR", "As applicable"),
+        _row(65, "Tooling", "TOTAL Tooling Cost INR", tooling_costs["total"], "INR", f"factor {tooling_costs['complexity_factor']}"),
     ]
     
     # 6. Fluctuation Range driven by metal volatility and process variation.
@@ -227,7 +264,8 @@ def calculate_hpdc_cost(traits, metal, annual_volume, sliders, location_multipli
         "spreadsheet_constants": QUOTE_CONSTANTS,
         "tooling_rows_58_60": TOOLING_ROWS_58_60,
         "quote_sheet_rows": quote_sheet_rows,
-        "tooling_estimate_inr": round(QUOTE_CONSTANTS["die_cost_inr"], 2),
+        "tooling_estimate_inr": round(tooling_costs["total"], 2),
+        "tooling_costs": tooling_costs,
         "costing_weight_kg": round(costing_weight_kg, 4),
         "gross_melt_kg": round(gross_melt_kg, 4),
         "yield_factor": round(yield_factor, 4),

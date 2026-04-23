@@ -147,8 +147,8 @@ form.addEventListener("submit", async (event) => {
       metric("Gross melt", number(data.cost.gross_melt_kg, " kg")),
       metric("Yield factor", number(data.cost.yield_factor)),
       metric("Costing weight", number(data.cost.costing_weight_kg, " kg")),
-      ...((data.cost.tooling_rows_58_60 || []).map((row) =>
-        metric(`Row ${row.row}`, `${row.label}: ${row.quantity} ${row.unit}`)
+      ...((data.cost.quote_sheet_rows || []).filter((row) => [58, 59, 60].includes(row.row)).map((row) =>
+        metric(`Row ${row.row}`, `${row.label}: ${money(row.value)}`)
       ))
     ].join("");
 
