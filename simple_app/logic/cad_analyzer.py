@@ -35,15 +35,24 @@ def _analyze_step_lightweight(file_path):
     mass properties require heavy CAD kernels that can crash small Render workers.
     """
     point_pattern = re.compile(
-        r"CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*\)\s*\)",
+        r"#(\d+)\s*=\s*CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*\)\s*\)",
         re.IGNORECASE,
     )
-    points = []
+    vertex_pattern = re.compile(r"#\d+\s*=\s*VERTEX_POINT\s*\([^,]*,\s*#(\d+)\s*\)", re.IGNORECASE)
+    point_map = {}
+    vertex_refs = set()
     with open(file_path, "r", errors="ignore") as handle:
         for line in handle:
             match = point_pattern.search(line)
             if match:
-                points.append(tuple(float(value) for value in match.groups()))
+                point_map[match.group(1)] = tuple(float(value) for value in match.groups()[1:])
+            vertex_match = vertex_pattern.search(line)
+            if vertex_match:
+                vertex_refs.add(vertex_match.group(1))
+
+    vertex_points = [point_map[ref] for ref in vertex_refs if ref in point_map]
+    points = vertex_points if len(vertex_points) >= 2 else list(point_map.values())
+    point_source = "VERTEX_POINT geometry" if len(vertex_points) >= 2 else "CARTESIAN_POINT bounding box"
 
     if len(points) < 2:
         raise ValueError(
@@ -87,7 +96,7 @@ def _analyze_step_lightweight(file_path):
         "validation": {
             "is_manifold": False,
             "integrity_score": 45,
-            "note": f"Render-safe STEP estimate from coordinate bounding box; fill_factor={fill_factor}; {scale_note}",
+            "note": f"Render-safe STEP estimate from {point_source}; fill_factor={fill_factor}; {scale_note}",
         },
     }
 
