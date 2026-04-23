@@ -79,8 +79,8 @@ def _analyze_step_lightweight(file_path):
 
     bbox_volume_mm3 = float(x * y * z)
     bbox_surface_mm2 = float(2 * ((x * y) + (y * z) + (x * z)))
-    fill_factor = _float_env("STEP_LIGHTWEIGHT_FILL_FACTOR", 0.013)
-    surface_factor = _float_env("STEP_LIGHTWEIGHT_SURFACE_FACTOR", 0.15)
+    fill_factor = _float_env("STEP_LIGHTWEIGHT_FILL_FACTOR", 0.25)
+    surface_factor = _float_env("STEP_LIGHTWEIGHT_SURFACE_FACTOR", 0.65)
 
     return {
         "volume": bbox_volume_mm3 * fill_factor,
