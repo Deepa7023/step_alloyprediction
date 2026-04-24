@@ -53,13 +53,7 @@ function drawCadPreview(dimensions, fileName = "", savedFilename = "") {
   if (!o3dViewer) {
     cadPreview.innerHTML = '';
     OV.SetExternalLibLocation('https://cdn.jsdelivr.net/npm/online-3d-viewer@0.14.0/libs');
-    OV.Init3DViewerElements();
     o3dViewer = new OV.EmbeddedViewer(cadPreview, {
-        camera: new OV.Camera (
-            new OV.Coord3D (2.0, 2.0, 2.0),
-            new OV.Coord3D (0.0, 0.0, 0.0),
-            new OV.Coord3D (0.0, 1.0, 0.0)
-        ),
         backgroundColor: new OV.RGBAColor (248, 250, 252, 255),
         edgeSettings: new OV.EdgeSettings (true, new OV.RGBColor (15, 23, 42), 1)
     });
@@ -115,6 +109,10 @@ form.addEventListener("submit", async (event) => {
     costTotal.textContent = money(data.cost.per_part_cost_inr);
     costAlloy.textContent = `${data.cost.alloy.replaceAll("_", " ")} - ${data.cost.alloy_source}`;
     heroCastingWeight.textContent = number(data.cost.weight_g, " g");
+
+    statusEl.textContent = "Per-part HPDC estimate is ready.";
+    showResults();
+
     drawCadPreview(
       data.geometry.dimensions_mm || {},
       data.file || "",
@@ -137,9 +135,6 @@ form.addEventListener("submit", async (event) => {
       `).join("");
 
     costBreakdown.innerHTML = summaryHtml;
-
-    statusEl.textContent = "Per-part HPDC estimate is ready.";
-    showResults();
   } catch (error) {
     processingState.classList.add("hidden");
     emptyState.classList.remove("hidden");
