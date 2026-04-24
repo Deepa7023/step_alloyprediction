@@ -1,13 +1,19 @@
 """
 HPDC COST ENGINE — Excel / Plant-Normal (NON-AGENT)
 
-This implementation is reverse-engineered from:
+This file is reverse-engineered from:
 HPDC Comparison 1 - Copy.xlsx
 
-It intentionally matches:
+It intentionally reproduces:
 - Net Weight (Kg)
 - Gross Weight (Kg)
 - Part Cost (INR)
+
+Important:
+- CAD solid volume is NOT used for weight
+- Weight uses bounding-box shell (Excel logic)
+- All prices are INR-based
+- Agent logic is intentionally excluded
 """
 
 from typing import Dict
@@ -18,7 +24,7 @@ from typing import Dict
 # ============================================================
 
 ALLOY_DENSITY_G_PER_CM3 = {
-    "EN AC-46000 D-F": 2.70,  # ADC12 / AlSi9Cu3 equivalent
+    "EN AC-46000 D-F": 2.70,   # ADC12 / AlSi9Cu3 equivalent
     "ADC12": 2.70,
 }
 
@@ -27,31 +33,32 @@ ALLOY_DENSITY_G_PER_CM3 = {
 # EXCEL-CALIBRATED CONSTANTS
 # ============================================================
 
-# Assumed HPDC shell thickness used implicitly in Excel (mm)
+# HPDC shell thickness implicitly assumed in Excel (mm)
 ASSUMED_WALL_THICKNESS_MM = 2.8
 
-# Runner + overflow factor
+# Runner + overflow allowance
 GROSS_WEIGHT_FACTOR = 1.10
 
 # Press-effective projected area factor
 PROJECTED_AREA_FACTOR = 0.48
 
-# Effective surface area (costing only)
+# Surface area used only for costing (not display)
 SURFACE_AREA_UTILIZATION = 0.82
 
 
-# ------------------------------------------------------------
+# ============================================================
 # PLANT-NORMAL COST RATES (INR)
-# ------------------------------------------------------------
-DEFAULT_MATERIAL_RATE_INR_PER_KG = 380.0
-DEFAULT_PRESS_RATE_INR_PER_MM2 = 0.003
-DEFAULT_CONVERSION_RATE_INR_PER_KG = 55.0
+# ============================================================
+
+MATERIAL_RATE_INR_PER_KG = 380.0
+PRESS_RATE_INR_PER_MM2 = 0.003
+CONVERSION_RATE_INR_PER_KG = 55.0
 
 
 # ============================================================
-# CORE EXCEL GEOMETRY → WEIGHTS
+# CORE: EXCEL STYLE WEIGHTS
 # ============================================================
-def derive_excel_weights(
+def _derive_excel_weights(
     dx_mm: float,
     dy_mm: float,
     dz_mm: float,
@@ -68,7 +75,7 @@ def derive_excel_weights(
     # Shell volume ≈ surface × wall thickness
     envelope_volume_mm3 = envelope_surface_mm2 * ASSUMED_WALL_THICKNESS_MM
 
-    # Convert mm³ → cm³ → kg
+    # mm³ → cm³ → kg
     net_weight_kg = (envelope_volume_mm3 / 1000.0) * density_g_per_cm3 / 1000.0
     gross_weight_kg = net_weight_kg * GROSS_WEIGHT_FACTOR
 
@@ -84,9 +91,6 @@ def derive_excel_weights(
 def calculate_excel_part_cost(
     cad_traits: Dict,
     alloy: str,
-    material_rate_inr_per_kg: float = DEFAULT_MATERIAL_RATE_INR_PER_KG,
-    press_rate_inr_per_mm2: float = DEFAULT_PRESS_RATE_INR_PER_MM2,
-    conversion_rate_inr_per_kg: float = DEFAULT_CONVERSION_RATE_INR_PER_KG,
 ) -> Dict[str, float]:
 
     dx = cad_traits["DX"]
@@ -96,30 +100,36 @@ def calculate_excel_part_cost(
 
     density = ALLOY_DENSITY_G_PER_CM3.get(alloy, 2.70)
 
-    # Weights
-    weights = derive_excel_weights(dx, dy, dz, density)
+    # --- Weights ---
+    weights = _derive_excel_weights(dx, dy, dz, density)
     net_weight_kg = weights["net_weight_kg"]
     gross_weight_kg = weights["gross_weight_kg"]
 
-    # Projected area (press sizing)
+    # --- Effective projected area for press sizing ---
     effective_projected_area_mm2 = dx * dy * PROJECTED_AREA_FACTOR
 
-    # Costs
-    material_cost = gross_weight_kg * material_rate_inr_per_kg
-    press_cost = effective_projected_area_mm2 * press_rate_inr_per_mm2
-    conversion_cost = net_weight_kg * conversion_rate_inr_per_kg
+    # --- Effective surface (costing only) ---
+    effective_surface_area_mm2 = real_surface_area_mm2 * SURFACE_AREA_UTILIZATION
+
+    # --- Cost calculation (Excel normal) ---
+    material_cost = gross_weight_kg * MATERIAL_RATE_INR_PER_KG
+    press_cost = effective_projected_area_mm2 * PRESS_RATE_INR_PER_MM2
+    conversion_cost = net_weight_kg * CONVERSION_RATE_INR_PER_KG
 
     total_cost = material_cost + press_cost + conversion_cost
 
     return {
-        # ✅ MATCHES EXCEL WHITE ROWS
+        # ✅ Excel white-row outputs
         "net_weight_kg": net_weight_kg,
         "gross_weight_kg": gross_weight_kg,
-        "real_surface_area_mm2": round(real_surface_area_mm2, 2),
-        "effective_projected_area_mm2": round(effective_projected_area_mm2, 2),
         "part_cost_inr": round(total_cost, 2),
 
-        # Optional breakdown
+        # ✅ Geometry transparency
+        "real_surface_area_mm2": round(real_surface_area_mm2, 2),
+        "effective_surface_area_mm2": round(effective_surface_area_mm2, 2),
+        "effective_projected_area_mm2": round(effective_projected_area_mm2, 2),
+
+        # ✅ Optional cost breakdown (debug / audit)
         "cost_breakup": {
             "material_cost_inr": round(material_cost, 2),
             "press_cost_inr": round(press_cost, 2),
