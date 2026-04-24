@@ -1,18 +1,17 @@
 """
-HPDC COST ENGINE — Calibrated to Supplier / Excel Reality
+HPDC COST ENGINE — Excel-Calibrated Manufacturing Reality
 
-Key principle:
-- CAD geometry is DESIGN truth
-- HPDC costing uses MANUFACTURING / COMMERCIAL truth
-
-So we convert CAD values using calibrated utilization factors.
+Key principles:
+- CAD geometry = design truth
+- HPDC costing uses effective casting geometry, not CAD solid
+- Weight and area must be calibrated to supplier practice
 """
 
 from typing import Dict
 
-# ------------------------------------------------------------------
-# Alloy theoretical densities (g/cm³)
-# ------------------------------------------------------------------
+# ---------------------------------------------------
+# Alloy densities (g/cm³)
+# ---------------------------------------------------
 ALLOY_DENSITY = {
     "Aluminum_A380": 2.70,
     "Aluminum_ADC12": 2.70,
@@ -21,26 +20,30 @@ ALLOY_DENSITY = {
     "Magnesium_AZ91D": 1.81,
 }
 
-# ------------------------------------------------------------------
-# HPDC CALIBRATION FACTORS (CRITICAL)
-# ------------------------------------------------------------------
+# ---------------------------------------------------
+# HPDC CALIBRATION FACTORS (MATCH EXCEL)
+# ---------------------------------------------------
 
-# Main driver: how much of CAD solid volume is actually chargeable
-# Thin / open housings typical range: 0.35 – 0.45
-CASTING_UTILIZATION_FACTOR = 0.40   # ✅ calibrated to your Excel
+# How much of CAD solid actually becomes casting metal
+# Open housings / brackets dominate your Excel set
+CASTING_SHELL_FACTOR = 0.75
 
-# Extra metal: runners, overflow, burning loss
-GROSS_WEIGHT_FACTOR = 1.10          # ✅ typical 8–12%
+# How much of that metal is chargeable after yield, trimming
+CHARGEABLE_YIELD_FACTOR = 0.55
 
-# Effective press-facing projected area (not full envelope)
-PROJECTED_AREA_UTILIZATION = 0.55   # ✅ open / ribbed parts
+# Extra metal for runners + overflow
+GROSS_WEIGHT_FACTOR = 1.10
 
-# Surface area influence (finishing, trimming — secondary effect)
-SURFACE_AREA_UTILIZATION = 0.70     # ✅ fillets & cosmetics ignored
+# Effective press-facing projected area (not envelope)
+PROJECTED_AREA_UTILIZATION = 0.48
 
-# ============================================================
-# GEOMETRY → COSTING NORMALIZATION
-# ============================================================
+# Effective surface for finishing
+SURFACE_AREA_UTILIZATION = 0.70
+
+
+# ===================================================
+# GEOMETRY → HPDC NORMALIZATION
+# ===================================================
 def derive_costing_geometry(
     cad_volume_mm3: float,
     cad_surface_area_mm2: float,
@@ -49,56 +52,60 @@ def derive_costing_geometry(
     dz: float,
     alloy: str,
 ) -> Dict[str, float]:
-    """
-    Convert CAD geometry to HPDC-usable geometry.
-    """
 
-    # ------------------------------
-    # 1. CAD SOLID WEIGHT (REFERENCE)
-    # ------------------------------
     density = ALLOY_DENSITY.get(alloy, 2.70)
+
+    # -----------------------------------------------
+    # 1. CAD SOLID WEIGHT (REFERENCE ONLY)
+    # -----------------------------------------------
     cad_weight_kg = (cad_volume_mm3 / 1e6) * density
 
-    # ------------------------------
-    # 2. NET HPDC WEIGHT (KEY FIX ✅)
-    # ------------------------------
-    # Supplier reality: CAD solid volume is NOT fully filled
-    net_hpdc_weight_kg = cad_weight_kg * CASTING_UTILIZATION_FACTOR
+    # -----------------------------------------------
+    # 2. NET HPDC WEIGHT (EXCEL REALITY)
+    # -----------------------------------------------
+    net_hpdc_weight_kg = (
+        cad_weight_kg
+        * CASTING_SHELL_FACTOR
+        * CHARGEABLE_YIELD_FACTOR
+    )
 
-    # ------------------------------
+    # -----------------------------------------------
     # 3. GROSS HPDC WEIGHT
-    # ------------------------------
+    # -----------------------------------------------
     gross_hpdc_weight_kg = net_hpdc_weight_kg * GROSS_WEIGHT_FACTOR
 
-    # ------------------------------
+    # -----------------------------------------------
     # 4. EFFECTIVE PROJECTED AREA
-    # ------------------------------
-    # Assume die opens along Z → face = DX × DY
+    # -----------------------------------------------
     cad_die_face_area_mm2 = dx * dy
-    effective_projected_area_mm2 = cad_die_face_area_mm2 * PROJECTED_AREA_UTILIZATION
+    effective_projected_area_mm2 = (
+        cad_die_face_area_mm2 * PROJECTED_AREA_UTILIZATION
+    )
 
-    # ------------------------------
+    # -----------------------------------------------
     # 5. EFFECTIVE SURFACE AREA
-    # ------------------------------
-    effective_surface_area_mm2 = cad_surface_area_mm2 * SURFACE_AREA_UTILIZATION
+    # -----------------------------------------------
+    effective_surface_area_mm2 = (
+        cad_surface_area_mm2 * SURFACE_AREA_UTILIZATION
+    )
 
     return {
-        # ---- CAD TRUTH (FOR TRANSPARENCY) ----
-        "cad_weight_kg": round(cad_weight_kg, 2),
-        "cad_surface_area_mm2": round(cad_surface_area_mm2, 0),
+        # CAD transparency
+        "cad_weight_kg": round(cad_weight_kg, 3),
         "cad_projected_area_mm2": round(cad_die_face_area_mm2, 0),
+        "cad_surface_area_mm2": round(cad_surface_area_mm2, 0),
 
-        # ---- HPDC-REAL VALUES (USED FOR COST) ----
-        "net_weight_kg": round(net_hpdc_weight_kg, 2),
-        "gross_weight_kg": round(gross_hpdc_weight_kg, 2),
+        # HPDC-real geometry
+        "net_weight_kg": round(net_hpdc_weight_kg, 3),
+        "gross_weight_kg": round(gross_hpdc_weight_kg, 3),
         "effective_projected_area_mm2": round(effective_projected_area_mm2, 0),
         "effective_surface_area_mm2": round(effective_surface_area_mm2, 0),
     }
 
 
-# ============================================================
-# FINAL COST CALCULATION
-# ============================================================
+# ===================================================
+# COST CALCULATION
+# ===================================================
 def calculate_hpdc_cost(
     cad_traits: Dict,
     alloy: str,
@@ -106,9 +113,6 @@ def calculate_hpdc_cost(
     press_rate_per_mm2: float,
     conversion_rate_per_kg: float,
 ) -> Dict[str, float]:
-    """
-    Final HPDC part cost using calibrated manufacturing reality.
-    """
 
     geom = derive_costing_geometry(
         cad_volume_mm3=cad_traits["volume_mm3"],
@@ -119,9 +123,6 @@ def calculate_hpdc_cost(
         alloy=alloy,
     )
 
-    # ------------------------------
-    # COST BREAKDOWN
-    # ------------------------------
     material_cost = geom["gross_weight_kg"] * material_price_per_kg
     press_cost = geom["effective_projected_area_mm2"] * press_rate_per_mm2
     conversion_cost = geom["net_weight_kg"] * conversion_rate_per_kg
@@ -135,3 +136,4 @@ def calculate_hpdc_cost(
         "conversion_cost": round(conversion_cost, 2),
         "total_cost": round(total_cost, 2),
     }
+``
