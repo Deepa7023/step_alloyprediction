@@ -17,14 +17,17 @@ SUPPORTED_CAD_EXTENSIONS = [
 ]
 
 
-# ------------------------------------------------------
-# Mesh is for PREVIEW ONLY
-# ------------------------------------------------------
+# --------------------------------------------------
+# Mesh = PREVIEW ONLY (never for costing)
+# --------------------------------------------------
 def _load_mesh_preview(file_path):
     try:
         mesh = trimesh.load(file_path)
         if isinstance(mesh, trimesh.Scene):
-            parts = [g for g in mesh.geometry.values() if isinstance(g, trimesh.Trimesh)]
+            parts = [
+                g for g in mesh.geometry.values()
+                if isinstance(g, trimesh.Trimesh)
+            ]
             if parts:
                 return trimesh.util.concatenate(parts)
         elif isinstance(mesh, trimesh.Trimesh):
@@ -34,14 +37,16 @@ def _load_mesh_preview(file_path):
     return None
 
 
-# ======================================================
-# MAIN CAD ANALYSIS (COST‑SAFE)
-# ======================================================
+# ==================================================
+# CAD ANALYSIS (DX / DY / DZ – COST SAFE)
+# ==================================================
 def analyze_cad(file_path):
     """
-    Cost‑safe CAD analysis:
-    • OCP (analytic geometry) → REQUIRED for costing
-    • Mesh → preview only
+    CAD‑aligned geometry analysis:
+    - DX, DY, DZ from CAD kernel
+    - Surface area from CAD kernel
+    - Projected area from CAD kernel
+    - Mesh only for preview
     """
 
     analysis_id = str(uuid.uuid4())
@@ -50,44 +55,46 @@ def analyze_cad(file_path):
     if ext not in SUPPORTED_CAD_EXTENSIONS:
         return {"error": f"Unsupported CAD format: {ext}"}
 
+    # ---------------------------
+    # Metal detection (metadata)
+    # ---------------------------
     detected_metal = None
     if ext in [".step", ".stp"]:
         detected_metal = detect_metal_from_step(file_path)
 
-    # --------------------------------------------------
-    # STEP 1: OCP PRECISE GEOMETRY (MANDATORY)
-    # --------------------------------------------------
-    precise = PreciseSTEPAnalyzer()
-    precise_data = precise.analyze(file_path)
+    # ---------------------------
+    # CAD kernel analysis (OCP)
+    # ---------------------------
+    analyzer = PreciseSTEPAnalyzer()
+    precise = analyzer.analyze(file_path)
 
-    if precise_data.get("status") != "success":
+    if precise.get("status") != "success":
         return {
             "error": "GEOMETRY_NOT_COST_SAFE",
-            "reason": precise_data.get("reason", "OCP analysis failed"),
-            "message": "CAD kernel geometry required for HPDC costing."
+            "reason": precise.get("reason", "CAD kernel analysis failed"),
+            "message": "Exact CAD geometry required for HPDC costing."
         }
 
-    # --------------------------------------------------
-    # STEP 2: GEOMETRY FROM OCP (SOURCE OF TRUTH)
-    # --------------------------------------------------
-    volume_cm3 = precise_data["precise_volume_cm3"]
-    surface_cm2 = precise_data["precise_surface_cm2"]
-    projected_mm2 = precise_data["projected_area_mm2"]
-    dims = precise_data["dimensions"]
+    # ---------------------------
+    # Geometry FROM CAD KERNEL
+    # ---------------------------
+    volume_cm3 = precise["precise_volume_cm3"]
+    surface_cm2 = precise["precise_surface_cm2"]
+    projected_mm2 = precise["projected_area_mm2"]
 
-    # Unit normalization
+    dims = precise["dimensions"]
+
+    DX = round(float(dims["x"]), 2)
+    DY = round(float(dims["y"]), 2)
+    DZ = round(float(dims["z"]), 2)
+
+    # Convert units
     volume_mm3 = volume_cm3 * 1000.0
     surface_mm2 = surface_cm2 * 100.0
 
-    dimensions = {
-        "x": float(dims["x"]),
-        "y": float(dims["y"]),
-        "z": float(dims["z"]),
-    }
-
-    # --------------------------------------------------
-    # STEP 3: PREVIEW MESH (UI ONLY)
-    # --------------------------------------------------
+    # ---------------------------
+    # Mesh preview (UI only)
+    # ---------------------------
     preview_b64 = ""
     mesh = _load_mesh_preview(file_path)
     if mesh is not None:
@@ -95,28 +102,41 @@ def analyze_cad(file_path):
         mesh.export(buf, file_type="stl")
         preview_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    # --------------------------------------------------
-    # STEP 4: TRAITS (COST‑SAFE CONTRACT)
-    # --------------------------------------------------
+    # ---------------------------
+    # Traits (COST SAFE CONTRACT)
+    # ---------------------------
     traits = {
-        "volume": volume_mm3,                       # mm³ ✅
-        "surface_area": surface_mm2,               # mm² ✅ OCP
-        "projected_area": projected_mm2,            # mm² ✅ OCP
-        "dimensions": dimensions,                   # mm ✅
+        # ✅ Explicit CAD-style dimensions
+        "DX": DX,
+        "DY": DY,
+        "DZ": DZ,
+
+        # ✅ Cost-critical geometry
+        "volume": round(volume_mm3, 2),          # mm³
+        "surface_area": round(surface_mm2, 2),   # mm²
+        "projected_area": round(projected_mm2, 2),  # mm²
+
+        # Preview only
         "preview_mesh": (
-            f"data:model/stl;base64,{preview_b64}" if preview_b64 else ""
+            f"data:model/stl;base64,{preview_b64}"
+            if preview_b64 else ""
         ),
+
+        # Geometry authority
         "geometry_source": {
+            "DX": "OCP",
+            "DY": "OCP",
+            "DZ": "OCP",
             "volume": "OCP",
             "surface_area": "OCP",
             "projected_area": "OCP",
-            "dimensions": "OCP"
         }
     }
 
     logger.info(
-        f"OCP_GEOMETRY_OK | Vol={round(volume_mm3,1)}mm³ | "
-        f"Surf={round(surface_mm2,1)}mm² | Proj={round(projected_mm2,1)}mm²"
+        f"CAD_GEOM_OK | DX={DX} DY={DY} DZ={DZ} | "
+        f"Surf={surface_mm2:.1f} mm² | "
+        f"Proj={projected_mm2:.1f} mm²"
     )
 
     return {
