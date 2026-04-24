@@ -289,6 +289,9 @@ def _mesh_validation(mesh):
     return {"is_manifold": watertight, "integrity_score": int(_safe_float(score, 60.0))}
 
 
+
+
+
 def _analyze_step_lightweight(file_path):
     point_pattern = re.compile(
         r"#(\d+)\s*=\s*CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*,\s*([-+0-9.Ee]+)\s*\)\s*\)",
@@ -502,6 +505,7 @@ def analyze_cad(file_path):
             note="; ".join(note_parts),
         )
         traits["feature_signature"] = _feature_signature(traits)
+        traits["preview_svg"] = None
 
         logger.info(
             "GEOMETRY: dims=%s vol=%scm3 proj=%smm2 fill=%s profile=%s",

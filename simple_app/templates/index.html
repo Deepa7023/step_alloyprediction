@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>STEP Alloy Cost</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/online3dviewer@0.14.0/build/engine/o3dv.min.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -145,9 +146,9 @@
                 <span>CAD Preview</span>
               </div>
               <div class="cad-preview-card">
-                <div id="cadPreview" class="cad-preview-viewport" aria-label="Lightweight CAD preview"></div>
+                <div id="cadPreview" class="cad-preview-viewport" aria-label="Real CAD preview"></div>
                 <div class="cad-preview-meta">
-                  <span>Lightweight visual from analyzed dimensions</span>
+                  <span>Real 3D viewer rendering exact file</span>
                   <strong id="cadPreviewLabel">Waiting for CAD file</strong>
                 </div>
               </div>

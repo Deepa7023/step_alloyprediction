@@ -2,7 +2,7 @@ import os
 import uuid
 import logging
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from .logic.cad_analyzer import SUPPORTED_CAD_EXTENSIONS, analyze_cad
@@ -146,12 +146,14 @@ def analyze():
 
     response = {
         "file": file.filename,
+        "saved_filename": saved_name,
         "engine": result["engine"],
         "geometry": {
             "volume_mm3": round(traits.get("volume", 0), 2),
             "surface_area_mm2": round(traits.get("surface_area", 0), 2),
             "projected_area_mm2": round(traits.get("projected_area", 0), 2),
             "dimensions_mm": traits.get("dimensions", {}),
+            "preview_svg": traits.get("preview_svg"),
             "feature_signature": traits.get("feature_signature", {}),
             "topology": traits.get("topology", {}),
             "validation": traits.get("validation", {}),
@@ -183,6 +185,11 @@ def analyze():
         },
     }
     return jsonify(response)
+
+
+@app.get("/uploads/<filename>")
+def get_upload(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 
 if __name__ == "__main__":
