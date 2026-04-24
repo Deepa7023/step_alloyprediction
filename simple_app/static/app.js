@@ -52,7 +52,7 @@ function drawCadPreview(dimensions, fileName = "", savedFilename = "") {
   
   if (!o3dViewer) {
     cadPreview.innerHTML = '';
-    OV.SetExternalLibLocation('https://cdn.jsdelivr.net/npm/online3dviewer@0.14.0/libs');
+    OV.SetExternalLibLocation('https://cdn.jsdelivr.net/npm/online-3d-viewer@0.14.0/libs');
     OV.Init3DViewerElements();
     o3dViewer = new OV.EmbeddedViewer(cadPreview, {
         camera: new OV.Camera (
