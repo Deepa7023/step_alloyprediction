@@ -1,19 +1,20 @@
 """
-HPDC COST ENGINE — Excel-Style Plant Costing (FINAL)
+HPDC COST ENGINE — Excel / Plant-Normalized Costing (FINAL)
 
-Purpose:
-- Match OEM Excel "normal" weight and cost
-- Ignore agent / inflated costing logic
-- Use CAD geometry only as a reference
-- Apply calibrated manufacturing assumptions
+This model intentionally matches OEM Excel-style "normal cost" values.
+It does NOT try to infer physics-perfect costs.
 
-All prices are assumed to be INR-based.
+Principles:
+- CAD geometry = design truth
+- Excel cost = calibrated manufacturing truth
+- Prices are INR-based (NO USD, NO FX here)
 """
 
 from typing import Dict
 
 # ---------------------------------------------------
-# Alloy densities (g/cm³) — reference only
+# Alloy reference densities (g/cm³)
+# Used only to compute CAD solid reference weight
 # ---------------------------------------------------
 ALLOY_DENSITY = {
     "Aluminum_A380": 2.70,
@@ -24,23 +25,26 @@ ALLOY_DENSITY = {
 }
 
 # ---------------------------------------------------
-# EXCEL-CALIBRATED MANUFACTURING FACTORS
+# EXCEL-CALIBRATED NORMALIZATION FACTORS
 # ---------------------------------------------------
 
-# How much of CAD solid becomes actual casting metal
-# Derived from your Excel:
-# 4.7 kg CAD → ~1.9 kg Net ⇒ ~0.40
+# CAD solid → effective casting metal
+# 4.7 kg CAD ≈ 1.9 kg Excel → ~0.40
 CASTING_UTILIZATION_FACTOR = 0.40
 
 # Gross weight allowance (runners + overflow)
 GROSS_WEIGHT_FACTOR = 1.10
 
-# Effective projected area vs envelope
-# Excel press sizing implies ~45–50%
+# Press-effective projected area
+# Excel press sizing implies ~45–50% of envelope
 PROJECTED_AREA_UTILIZATION = 0.48
 
-# Surface area used only for finishing (minor role)
+# Surface area used only for finishing
 SURFACE_AREA_UTILIZATION = 0.70
+
+# Final price normalization
+# Brings theoretical cost down to Excel “normal cost”
+EXCEL_COST_CALIBRATION_FACTOR = 0.50
 
 
 # ===================================================
@@ -55,41 +59,42 @@ def derive_costing_geometry(
     alloy: str,
 ) -> Dict[str, float]:
 
-    # ------------------------------------------------
-    # 1. CAD SOLID WEIGHT (REFERENCE)
-    # ------------------------------------------------
     density = ALLOY_DENSITY.get(alloy, 2.70)
+
+    # -----------------------------------------------
+    # 1. CAD SOLID WEIGHT (REFERENCE ONLY)
+    # -----------------------------------------------
     cad_weight_kg = (cad_volume_mm3 / 1e6) * density
 
-    # ------------------------------------------------
-    # 2. EXCEL NET WEIGHT (CRITICAL FIX)
-    # ------------------------------------------------
+    # -----------------------------------------------
+    # 2. EXCEL NET WEIGHT
+    # -----------------------------------------------
     net_weight_kg = cad_weight_kg * CASTING_UTILIZATION_FACTOR
 
-    # ------------------------------------------------
+    # -----------------------------------------------
     # 3. EXCEL GROSS WEIGHT
-    # ------------------------------------------------
+    # -----------------------------------------------
     gross_weight_kg = net_weight_kg * GROSS_WEIGHT_FACTOR
 
-    # ------------------------------------------------
+    # -----------------------------------------------
     # 4. EXCEL PROJECTED AREA (PRESS EFFECTIVE)
-    # ------------------------------------------------
-    envelope_projected_area = dx * dy
+    # -----------------------------------------------
+    envelope_projected_area_mm2 = dx * dy
     effective_projected_area_mm2 = (
-        envelope_projected_area * PROJECTED_AREA_UTILIZATION
+        envelope_projected_area_mm2 * PROJECTED_AREA_UTILIZATION
     )
 
-    # ------------------------------------------------
+    # -----------------------------------------------
     # 5. EFFECTIVE SURFACE AREA (SECONDARY)
-    # ------------------------------------------------
+    # -----------------------------------------------
     effective_surface_area_mm2 = (
         cad_surface_area_mm2 * SURFACE_AREA_UTILIZATION
     )
 
     return {
-        # Reference only (optional to display)
+        # CAD transparency (optional display)
         "cad_weight_kg": round(cad_weight_kg, 3),
-        "cad_projected_area_mm2": round(envelope_projected_area, 0),
+        "cad_projected_area_mm2": round(envelope_projected_area_mm2, 0),
         "cad_surface_area_mm2": round(cad_surface_area_mm2, 0),
 
         # Excel-style values
@@ -101,14 +106,14 @@ def derive_costing_geometry(
 
 
 # ===================================================
-# FINAL PART COST (NORMAL / NON-AGENT)
+# FINAL PART COST — NORMAL (NON-AGENT)
 # ===================================================
 def calculate_hpdc_cost(
     cad_traits: Dict,
     alloy: str,
-    material_price_per_kg: float,   # ✅ INR / kg
-    press_cost_per_mm2: float,       # ✅ INR / mm²
-    conversion_cost_per_kg: float,   # ✅ INR / kg
+    material_price_per_kg: float,   # INR / kg
+    press_cost_per_mm2: float,       # INR / mm²
+    conversion_cost_per_kg: float,   # INR / kg
 ) -> Dict[str, float]:
 
     geom = derive_costing_geometry(
@@ -120,20 +125,26 @@ def calculate_hpdc_cost(
         alloy=alloy,
     )
 
-    # -------------------------------
-    # EXCEL-STYLE COST BREAKDOWN
-    # -------------------------------
+    # -----------------------------------------------
+    # THEORETICAL COST
+    # -----------------------------------------------
     material_cost = geom["gross_weight_kg"] * material_price_per_kg
     press_cost = geom["effective_projected_area_mm2"] * press_cost_per_mm2
     conversion_cost = geom["net_weight_kg"] * conversion_cost_per_kg
 
-    total_cost = material_cost + press_cost + conversion_cost
+    raw_total_cost = material_cost + press_cost + conversion_cost
+
+    # -----------------------------------------------
+    # EXCEL NORMALIZATION (FINAL FIX)
+    # -----------------------------------------------
+    total_cost = raw_total_cost * EXCEL_COST_CALIBRATION_FACTOR
 
     return {
         **geom,
         "material_cost": round(material_cost, 2),
         "press_cost": round(press_cost, 2),
         "conversion_cost": round(conversion_cost, 2),
+        "raw_total_cost": round(raw_total_cost, 2),
         "total_cost": round(total_cost, 2),
     }
 ``
