@@ -38,15 +38,16 @@ def _load_mesh_preview(file_path):
 
 
 # ==================================================
-# CAD-KERNEL-ALIGNED GEOMETRY ANALYSIS
+# CAD-KERNEL-ALIGNED GEOMETRY ANALYSIS (FINAL)
 # ==================================================
 def analyze_cad(file_path):
     """
-    Geometry extraction aligned with CAD viewers:
-    • DX / DY / DZ from CAD kernel
-    • Surface area in mm² (CAD kernel)
-    • Projected area in mm² (CAD kernel)
-    • Mesh strictly preview-only
+    FINAL CAD geometry analyzer for HPDC costing.
+    Guarantees:
+    - DX, DY, DZ = full CAD bounding box (not half extent)
+    - Surface area in mm² (CAD kernel)
+    - Projected area in mm² (CAD kernel)
+    - Mesh used only for preview
     """
 
     analysis_id = str(uuid.uuid4())
@@ -72,25 +73,28 @@ def analyze_cad(file_path):
         return {
             "error": "GEOMETRY_NOT_COST_SAFE",
             "reason": precise.get("reason", "CAD-kernel analysis failed"),
-            "message": "Exact CAD geometry required for HPDC costing."
+            "message": "Exact CAD geometry (OCP) is required for HPDC costing."
         }
 
-    # -----------------------------
-    # CAD-kernel geometry (source of truth)
-    # -----------------------------
-    dims = precise["dimensions"]
+    # ------------------------------------------------
+    # ✅ FULL CAD BOUNDING BOX (CRITICAL FIX)
+    # ------------------------------------------------
+    bbox = precise["bounding_box"]  # MUST contain min/max
 
-    DX = round(float(dims["x"]), 2)
-    DY = round(float(dims["y"]), 2)
-    DZ = round(float(dims["z"]), 2)
+    DX = round(bbox["xmax"] - bbox["xmin"], 2)
+    DY = round(bbox["ymax"] - bbox["ymin"], 2)
+    DZ = round(bbox["zmax"] - bbox["zmin"], 2)
 
+    # ------------------------------------------------
+    # ✅ CAD-KERNEL GEOMETRY (UNITS FIXED)
+    # ------------------------------------------------
     volume_mm3 = precise["precise_volume_cm3"] * 1000.0
     surface_mm2 = precise["precise_surface_cm2"] * 100.0
     projected_mm2 = float(precise["projected_area_mm2"])
 
-    # -----------------------------
+    # ------------------------------------------------
     # Mesh preview (UI only)
-    # -----------------------------
+    # ------------------------------------------------
     preview_b64 = ""
     mesh = _load_mesh_preview(file_path)
     if mesh is not None:
@@ -98,38 +102,34 @@ def analyze_cad(file_path):
         mesh.export(buf, file_type="stl")
         preview_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    # -----------------------------
-    # FINAL TRAITS (COST SAFE)
-    # -----------------------------
+    # ------------------------------------------------
+    # COST-SAFE GEOMETRY CONTRACT
+    # ------------------------------------------------
     traits = {
-        # ✅ Explicit CAD-viewer dimensions
         "DX": DX,
         "DY": DY,
         "DZ": DZ,
 
-        # ✅ Cost‑critical geometry (mm units only)
         "volume": round(volume_mm3, 2),            # mm³
         "surface_area": round(surface_mm2, 2),     # mm²
         "projected_area": round(projected_mm2, 2), # mm²
 
-        # Preview only
         "preview_mesh": (
             f"data:model/stl;base64,{preview_b64}" if preview_b64 else ""
         ),
 
-        # Geometry authority (agent trust)
         "geometry_source": {
             "DX": "OCP",
             "DY": "OCP",
             "DZ": "OCP",
             "volume": "OCP",
             "surface_area": "OCP",
-            "projected_area": "OCP"
+            "projected_area": "OCP",
         }
     }
 
     logger.info(
-        f"CAD_GEOMETRY_OK | DX={DX} DY={DY} DZ={DZ} | "
+        f"CAD_GEOM_OK | DX={DX} DY={DY} DZ={DZ} | "
         f"Surface={surface_mm2:.2f} mm² | "
         f"Projected={projected_mm2:.2f} mm²"
     )
@@ -144,4 +144,3 @@ def analyze_cad(file_path):
             "cost_safe": True
         }
     }
-``
