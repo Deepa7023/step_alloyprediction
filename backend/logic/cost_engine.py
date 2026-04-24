@@ -40,7 +40,7 @@ GROSS_WEIGHT_FACTOR = 1.10
 PROJECTED_AREA_UTILIZATION = 0.48
 
 # Surface area used only for finishing
-SURFACE_AREA_UTILIZATION = 0.70
+SURFACE_AREA_UTILIZATION = 0.83
 
 # Final price normalization
 # Brings theoretical cost down to Excel “normal cost”
