@@ -1,21 +1,3 @@
-"""
-HPDC COST ENGINE — Excel / Plant-Normal (NON-AGENT)
-
-This file is reverse-engineered from:
-HPDC Comparison 1 - Copy.xlsx
-
-It intentionally reproduces:
-- Net Weight (Kg)
-- Gross Weight (Kg)
-- Part Cost (INR)
-
-Important:
-- CAD solid volume is NOT used for weight
-- Weight uses bounding-box shell (Excel logic)
-- All prices are INR-based
-- Agent logic is intentionally excluded
-"""
-
 from typing import Dict
 
 
@@ -24,7 +6,7 @@ from typing import Dict
 # ============================================================
 
 ALLOY_DENSITY_G_PER_CM3 = {
-    "EN AC-46000 D-F": 2.70,   # ADC12 / AlSi9Cu3 equivalent
+    "EN AC-46000 D-F": 2.70,
     "ADC12": 2.70,
 }
 
@@ -33,31 +15,38 @@ ALLOY_DENSITY_G_PER_CM3 = {
 # EXCEL-CALIBRATED CONSTANTS
 # ============================================================
 
-# HPDC shell thickness implicitly assumed in Excel (mm)
 ASSUMED_WALL_THICKNESS_MM = 2.8
-
-# Runner + overflow allowance
 GROSS_WEIGHT_FACTOR = 1.10
-
-# Press-effective projected area factor
 PROJECTED_AREA_FACTOR = 0.48
-
-# Surface area used only for costing (not display)
 SURFACE_AREA_UTILIZATION = 0.82
 
 
 # ============================================================
-# PLANT-NORMAL COST RATES (INR)
+# UPDATED COST RATES (NEAR-EXCEL, CLEAN)
 # ============================================================
 
-MATERIAL_RATE_INR_PER_KG = 380.0
+# ✅ Fixed alloy price
+MATERIAL_RATE_INR_PER_KG = 212.78
+
 PRESS_RATE_INR_PER_MM2 = 0.003
-CONVERSION_RATE_INR_PER_KG = 55.0
+
+# ✅ Simplified but realistic conversion buckets (per part)
+CONVERSION_BREAKUP = {
+    "casting": 42.0,
+    "finishing": 18.0,
+    "inspection": 8.0,
+}
+
+# Light plant-level adjustments
+REJECTION_RATE = 0.03
+OVERHEAD_PERCENT = 0.10
+PROFIT_PERCENT = 0.07
 
 
 # ============================================================
 # CORE: EXCEL STYLE WEIGHTS
 # ============================================================
+
 def _derive_excel_weights(
     dx_mm: float,
     dy_mm: float,
@@ -65,17 +54,14 @@ def _derive_excel_weights(
     density_g_per_cm3: float,
 ) -> Dict[str, float]:
 
-    # Bounding-box shell surface
     envelope_surface_mm2 = 2 * (
         dx_mm * dy_mm +
         dy_mm * dz_mm +
         dx_mm * dz_mm
     )
 
-    # Shell volume ≈ surface × wall thickness
     envelope_volume_mm3 = envelope_surface_mm2 * ASSUMED_WALL_THICKNESS_MM
 
-    # mm³ → cm³ → kg
     net_weight_kg = (envelope_volume_mm3 / 1000.0) * density_g_per_cm3 / 1000.0
     gross_weight_kg = net_weight_kg * GROSS_WEIGHT_FACTOR
 
@@ -86,8 +72,9 @@ def _derive_excel_weights(
 
 
 # ============================================================
-# FINAL EXCEL COST FUNCTION (NON-AGENT)
+# FINAL EXCEL COST FUNCTION (UPDATED, SAME STRUCTURE)
 # ============================================================
+
 def calculate_excel_part_cost(
     cad_traits: Dict,
     alloy: str,
@@ -105,21 +92,39 @@ def calculate_excel_part_cost(
     net_weight_kg = weights["net_weight_kg"]
     gross_weight_kg = weights["gross_weight_kg"]
 
-    # --- Effective projected area for press sizing ---
+    # --- Effective projected area ---
     effective_projected_area_mm2 = dx * dy * PROJECTED_AREA_FACTOR
 
-    # --- Effective surface (costing only) ---
+    # --- Effective surface (info only) ---
     effective_surface_area_mm2 = real_surface_area_mm2 * SURFACE_AREA_UTILIZATION
 
-    # --- Cost calculation (Excel normal) ---
-    material_cost = gross_weight_kg * MATERIAL_RATE_INR_PER_KG
-    press_cost = effective_projected_area_mm2 * PRESS_RATE_INR_PER_MM2
-    conversion_cost = net_weight_kg * CONVERSION_RATE_INR_PER_KG
+    # ========================================================
+    # COST CALCULATION (UPDATED)
+    # ========================================================
 
-    total_cost = material_cost + press_cost + conversion_cost
+    # Material
+    material_cost = gross_weight_kg * MATERIAL_RATE_INR_PER_KG
+
+    # Press
+    press_cost = effective_projected_area_mm2 * PRESS_RATE_INR_PER_MM2
+
+    # Conversion (grouped, not per kg)
+    conversion_cost = sum(CONVERSION_BREAKUP.values())
+
+    # Rejection (light)
+    rejection_cost = material_cost * REJECTION_RATE
+
+    # Subtotal
+    subtotal = material_cost + press_cost + conversion_cost + rejection_cost
+
+    # Overheads & Profit
+    overhead_cost = subtotal * OVERHEAD_PERCENT
+    profit_cost = subtotal * PROFIT_PERCENT
+
+    total_cost = subtotal + overhead_cost + profit_cost
 
     return {
-        # ✅ Excel white-row outputs
+        # ✅ Excel-style outputs
         "net_weight_kg": net_weight_kg,
         "gross_weight_kg": gross_weight_kg,
         "part_cost_inr": round(total_cost, 2),
@@ -129,10 +134,13 @@ def calculate_excel_part_cost(
         "effective_surface_area_mm2": round(effective_surface_area_mm2, 2),
         "effective_projected_area_mm2": round(effective_projected_area_mm2, 2),
 
-        # ✅ Optional cost breakdown (debug / audit)
+        # ✅ Cost breakdown (clean but useful)
         "cost_breakup": {
             "material_cost_inr": round(material_cost, 2),
             "press_cost_inr": round(press_cost, 2),
             "conversion_cost_inr": round(conversion_cost, 2),
+            "rejection_cost_inr": round(rejection_cost, 2),
+            "overhead_cost_inr": round(overhead_cost, 2),
+            "profit_cost_inr": round(profit_cost, 2),
         }
     }
